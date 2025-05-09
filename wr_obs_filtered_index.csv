@@ -1,0 +1,22 @@
+sid,name,elev,state,lat,lon,lat_hires_index,lon_hires_index,lat_lowres_index,lon_lowres_index
+KSLC,"Salt Lake City, Salt Lake City International Airport",4226,UT,40.77069,-111.96503,47,60,24,30
+KACV,"Arcata / Eureka, Arcata Airport",217,CA,40.97806,-124.10861,48,12,24,6
+KBIL,"Billings, Billings Logan International Airport",3648,MT,45.80694,-108.54222,67,74,34,37
+KBOI,Boise Air Terminal,2822,ID,43.56704,-116.24053,58,43,29,22
+KEKO,"Elko, Elko Regional Airport",5052,NV,40.82404,-115.78635,47,45,24,22
+KFLG,Flagstaff Pulliam Airport,6994,AZ,35.14433,-111.66637,25,61,12,31
+KGEG,"Spokane, Spokane International Airport",2372,WA,47.62139,-117.52778,74,38,37,19
+KGGW,"Glasgow, Glasgow International Airport",2293,MT,48.21389,-106.62139,77,82,38,41
+KLAS,Harry Reid International Airport,2180,NV,36.07188,-115.1634,28,47,14,24
+KLAX,"Los Angeles, Los Angeles International Airport",125,CA,33.93806,-118.38889,20,34,10,17
+KMFR,Rogue Valley International Airport,1312,OR,42.37503,-122.87696,54,16,27,8
+KMSO,"Missoula, Missoula International Airport",3199,MT,46.92083,-114.0925,72,52,36,26
+KPDT,Eastern Oregon Regional Airport at Pendleton,1483,OR,45.69757,-118.83444,67,33,33,16
+KPDX,"Portland, Portland International Airport",20,OR,45.59578,-122.60917,66,18,33,9
+KPHX,"Phoenix, Phoenix Sky Harbor International Airport",1115,AZ,33.427799,-112.003465,18,60,9,30
+KPIH,"Pocatello, Pocatello Regional Airport",4449,ID,42.92028,-112.57111,56,58,28,29
+KRNO,"Reno, Reno Tahoe International Airport",4403,NV,39.50776,-119.76819,42,29,21,14
+KSAC,Sacramento Executive Airport,16,CA,38.50674,-121.49597,38,22,19,11
+KSEA,"Seattle, Seattle-Tacoma International Airport",427,WA,47.44472,-122.31361,74,19,37,9
+KSFO,"San Francisco, San Francisco International Airport",10,CA,37.61961,-122.36558,34,19,17,9
+KTUS,"Tucson, Tucson International Airport",2546,AZ,32.13153,-110.95635,13,64,6,32
