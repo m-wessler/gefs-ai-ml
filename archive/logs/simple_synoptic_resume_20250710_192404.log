@@ -1,0 +1,572 @@
+2025-07-10 19:24:04,637 [INFO] 📝 Simple processing log (with resume): logs/simple_synoptic_resume_20250710_192404.log
+2025-07-10 19:24:04,637 [INFO] 🚀 Simple Synoptic Data Retrieval Script Started (WITH RESUME)
+2025-07-10 19:24:04,637 [INFO] 📅 Date range: 2021-01-01 to 2021-12-31
+2025-07-10 19:24:04,637 [INFO] 🔄 Force reprocess: False
+2025-07-10 19:24:04,637 [INFO] 🔐 Process ID: 423401
+2025-07-10 19:24:04,637 [INFO] 📂 Working directory: /nas/stid/projects/michael.wessler/gefs-ai-ml/scripts
+2025-07-10 19:24:04,638 [INFO] 👤 User: michael.wessler
+2025-07-10 19:24:04,638 [INFO] 🚀 SIMPLE MONTHLY DATA RETRIEVAL STARTED (WITH RESUME)
+2025-07-10 19:24:04,638 [INFO] 📊 CWAs: BYZ, BOI, LKN, EKA, FGZ, GGW, TFX, VEF, LOX, MFR, MSO, PDT, PSR, PIH, PQR, REV, STO, SLC, SGX, MTR, HNX, SEW, OTX, TWC
+2025-07-10 19:24:04,638 [INFO] 📅 Date range: 2021-01-01 to 2021-12-31
+2025-07-10 19:24:04,639 [INFO] 📆 Total months: 12
+2025-07-10 19:24:04,639 [INFO] ✅ Months to skip (already done): 0
+2025-07-10 19:24:04,639 [INFO] 🔄 Months to process: 12
+2025-07-10 19:24:04,639 [INFO] 🔑 Available tokens: 20
+2025-07-10 19:24:04,639 [INFO] 
+🔄 Processing months:
+2025-07-10 19:24:04,639 [INFO]   • 2021-01 (2021-01-01 to 2021-01-31)
+2025-07-10 19:24:04,639 [INFO]   • 2021-02 (2021-02-01 to 2021-02-28)
+2025-07-10 19:24:04,639 [INFO]   • 2021-03 (2021-03-01 to 2021-03-31)
+2025-07-10 19:24:04,639 [INFO]   • 2021-04 (2021-04-01 to 2021-04-30)
+2025-07-10 19:24:04,639 [INFO]   • 2021-05 (2021-05-01 to 2021-05-31)
+2025-07-10 19:24:04,639 [INFO]   • 2021-06 (2021-06-01 to 2021-06-30)
+2025-07-10 19:24:04,639 [INFO]   • 2021-07 (2021-07-01 to 2021-07-31)
+2025-07-10 19:24:04,639 [INFO]   • 2021-08 (2021-08-01 to 2021-08-31)
+2025-07-10 19:24:04,639 [INFO]   • 2021-09 (2021-09-01 to 2021-09-30)
+2025-07-10 19:24:04,639 [INFO]   • 2021-10 (2021-10-01 to 2021-10-31)
+2025-07-10 19:24:04,639 [INFO]   • 2021-11 (2021-11-01 to 2021-11-30)
+2025-07-10 19:24:04,639 [INFO]   • 2021-12 (2021-12-01 to 2021-12-31)
+2025-07-10 19:24:04,639 [INFO] 
+🗓️  Processing month 1/12: 2021-01
+2025-07-10 19:24:04,639 [INFO] 📅 Month range: 2021-01-01 to 2021-01-31
+2025-07-10 19:24:04,639 [INFO] ------------------------------------------------------------
+2025-07-10 19:24:04,639 [INFO] 🔢 Month chunks: 31
+2025-07-10 19:24:04,639 [INFO] 🧵 Parallel workers: 20
+2025-07-10 19:24:18,736 [INFO] ✅ Chunk-016 (2021-01-16 00:00-23:59): 374 stations retrieved
+2025-07-10 19:24:20,876 [INFO] ✅ Chunk-009 (2021-01-09 00:00-23:59): 373 stations retrieved
+2025-07-10 19:24:35,727 [INFO] ✅ Chunk-004 (2021-01-04 00:00-23:59): 377 stations retrieved
+2025-07-10 19:24:37,267 [INFO] ✅ Chunk-018 (2021-01-18 00:00-23:59): 373 stations retrieved
+2025-07-10 19:24:38,310 [INFO] ✅ Chunk-001 (2021-01-01 00:00-23:59): 373 stations retrieved
+2025-07-10 19:24:40,231 [INFO] ✅ Chunk-002 (2021-01-02 00:00-23:59): 374 stations retrieved
+2025-07-10 19:24:42,419 [INFO] ✅ Chunk-025 (2021-01-25 00:00-23:59): 377 stations retrieved
+2025-07-10 19:24:44,035 [INFO] ✅ Chunk-015 (2021-01-15 00:00-23:59): 375 stations retrieved
+2025-07-10 19:24:45,721 [INFO] ✅ Chunk-014 (2021-01-14 00:00-23:59): 372 stations retrieved
+2025-07-10 19:24:47,111 [INFO] ✅ Chunk-017 (2021-01-17 00:00-23:59): 371 stations retrieved
+2025-07-10 19:24:58,329 [INFO] ✅ Chunk-029 (2021-01-29 00:00-23:59): 376 stations retrieved
+2025-07-10 19:25:00,796 [INFO] ✅ Chunk-024 (2021-01-24 00:00-23:59): 372 stations retrieved
+2025-07-10 19:25:01,901 [INFO] ✅ Chunk-019 (2021-01-19 00:00-23:59): 374 stations retrieved
+2025-07-10 19:25:05,114 [INFO] ✅ Chunk-006 (2021-01-06 00:00-23:59): 380 stations retrieved
+2025-07-10 19:25:08,345 [INFO] ✅ Chunk-028 (2021-01-28 00:00-23:59): 373 stations retrieved
+2025-07-10 19:25:09,649 [INFO] ✅ Chunk-008 (2021-01-08 00:00-23:59): 377 stations retrieved
+2025-07-10 19:25:11,135 [INFO] ✅ Chunk-023 (2021-01-23 00:00-23:59): 325 stations retrieved
+2025-07-10 19:25:12,647 [INFO] ✅ Chunk-030 (2021-01-30 00:00-23:59): 372 stations retrieved
+2025-07-10 19:25:14,335 [INFO] ✅ Chunk-010 (2021-01-10 00:00-23:59): 369 stations retrieved
+2025-07-10 19:25:16,429 [INFO] ✅ Chunk-005 (2021-01-05 00:00-23:59): 378 stations retrieved
+2025-07-10 19:25:19,052 [INFO] ✅ Chunk-026 (2021-01-26 00:00-23:59): 366 stations retrieved
+2025-07-10 19:25:20,543 [INFO] ✅ Chunk-021 (2021-01-21 00:00-23:59): 327 stations retrieved
+2025-07-10 19:25:20,671 [INFO] ✅ Chunk-027 (2021-01-27 00:00-23:59): 376 stations retrieved
+2025-07-10 19:25:27,361 [INFO] ✅ Chunk-031 (2021-01-31 00:00-23:59): 371 stations retrieved
+2025-07-10 19:25:29,687 [INFO] ✅ Chunk-013 (2021-01-13 00:00-23:59): 373 stations retrieved
+2025-07-10 19:25:32,856 [INFO] ✅ Chunk-012 (2021-01-12 00:00-23:59): 372 stations retrieved
+2025-07-10 19:25:35,033 [WARNING] ⚠️  Chunk-011 (2021-01-11 00:00-23:59): Request error (attempt 1/4) - HTTPSConnectionPool(host='api.synopticdata.com', port=443): Read timed out. (read timeout=90)
+2025-07-10 19:25:35,064 [WARNING] ⚠️  Chunk-003 (2021-01-03 00:00-23:59): Request error (attempt 1/4) - HTTPSConnectionPool(host='api.synopticdata.com', port=443): Read timed out. (read timeout=90)
+2025-07-10 19:25:35,085 [WARNING] ⚠️  Chunk-007 (2021-01-07 00:00-23:59): Request error (attempt 1/4) - HTTPSConnectionPool(host='api.synopticdata.com', port=443): Read timed out. (read timeout=90)
+2025-07-10 19:25:35,095 [WARNING] ⚠️  Chunk-020 (2021-01-20 00:00-23:59): Request error (attempt 1/4) - HTTPSConnectionPool(host='api.synopticdata.com', port=443): Read timed out. (read timeout=90)
+2025-07-10 19:25:35,194 [INFO] ✅ Chunk-022 (2021-01-22 00:00-23:59): 327 stations retrieved
+2025-07-10 19:25:39,385 [INFO] ✅ Chunk-020 (2021-01-20 00:00-23:59): 375 stations retrieved (attempt 2)
+2025-07-10 19:25:41,181 [INFO] ✅ Chunk-011 (2021-01-11 00:00-23:59): 374 stations retrieved (attempt 2)
+2025-07-10 19:25:43,049 [INFO] ✅ Chunk-003 (2021-01-03 00:00-23:59): 372 stations retrieved (attempt 2)
+2025-07-10 19:25:45,374 [INFO] ✅ Chunk-007 (2021-01-07 00:00-23:59): 378 stations retrieved (attempt 2)
+2025-07-10 19:29:08,643 [INFO] 📈 Progress: 10/31 (32.3%) | ✅ 10 | ❌ 0
+2025-07-10 19:33:57,941 [INFO] 📈 Progress: 20/31 (64.5%) | ✅ 20 | ❌ 0
+2025-07-10 19:38:03,511 [INFO] 📈 Progress: 30/31 (96.8%) | ✅ 30 | ❌ 0
+2025-07-10 19:38:35,504 [INFO] ✅ Month complete: 1,958,298 records
+2025-07-10 19:38:35,504 [INFO] 📊 Success rate: 100.0%
+2025-07-10 19:39:19,380 [INFO] 💾 Monthly data saved: simple_synoptic_data_2021-01-01_to_2021-12-31_2021-01.csv (1,958,298 records, 184.9 MB)
+2025-07-10 19:39:19,657 [INFO] 
+🗓️  Processing month 2/12: 2021-02
+2025-07-10 19:39:19,657 [INFO] 📅 Month range: 2021-02-01 to 2021-02-28
+2025-07-10 19:39:19,657 [INFO] ------------------------------------------------------------
+2025-07-10 19:39:19,657 [INFO] 🔢 Month chunks: 28
+2025-07-10 19:39:19,657 [INFO] 🧵 Parallel workers: 20
+2025-07-10 19:39:21,688 [INFO] ✅ Chunk-007 (2021-02-07 00:00-23:59): 379 stations retrieved
+2025-07-10 19:39:24,276 [INFO] ✅ Chunk-014 (2021-02-14 00:00-23:59): 378 stations retrieved
+2025-07-10 19:39:26,077 [INFO] ✅ Chunk-003 (2021-02-03 00:00-23:59): 380 stations retrieved
+2025-07-10 19:39:29,198 [INFO] ✅ Chunk-012 (2021-02-12 00:00-23:59): 382 stations retrieved
+2025-07-10 19:39:30,475 [INFO] ✅ Chunk-010 (2021-02-10 00:00-23:59): 381 stations retrieved
+2025-07-10 19:39:33,416 [INFO] ✅ Chunk-021 (2021-02-21 00:00-23:59): 378 stations retrieved
+2025-07-10 19:39:34,647 [INFO] ✅ Chunk-025 (2021-02-25 00:00-23:59): 380 stations retrieved
+2025-07-10 19:39:37,290 [INFO] ✅ Chunk-026 (2021-02-26 00:00-23:59): 379 stations retrieved
+2025-07-10 19:39:38,772 [INFO] ✅ Chunk-009 (2021-02-09 00:00-23:59): 379 stations retrieved
+2025-07-10 19:39:41,807 [INFO] ✅ Chunk-015 (2021-02-15 00:00-23:59): 378 stations retrieved
+2025-07-10 19:39:43,051 [INFO] ✅ Chunk-024 (2021-02-24 00:00-23:59): 377 stations retrieved
+2025-07-10 19:39:46,998 [INFO] ✅ Chunk-019 (2021-02-19 00:00-23:59): 381 stations retrieved
+2025-07-10 19:39:48,339 [INFO] ✅ Chunk-023 (2021-02-23 00:00-23:59): 378 stations retrieved
+2025-07-10 19:39:50,212 [INFO] ✅ Chunk-020 (2021-02-20 00:00-23:59): 332 stations retrieved
+2025-07-10 19:39:52,531 [INFO] ✅ Chunk-011 (2021-02-11 00:00-23:59): 382 stations retrieved
+2025-07-10 19:40:07,251 [INFO] ✅ Chunk-027 (2021-02-27 00:00-23:59): 378 stations retrieved
+2025-07-10 19:40:08,848 [INFO] ✅ Chunk-002 (2021-02-02 00:00-23:59): 377 stations retrieved
+2025-07-10 19:40:10,520 [INFO] ✅ Chunk-018 (2021-02-18 00:00-23:59): 383 stations retrieved
+2025-07-10 19:40:12,665 [INFO] ✅ Chunk-006 (2021-02-06 00:00-23:59): 381 stations retrieved
+2025-07-10 19:40:13,548 [INFO] ✅ Chunk-004 (2021-02-04 00:00-23:59): 380 stations retrieved
+2025-07-10 19:40:14,613 [INFO] ✅ Chunk-001 (2021-02-01 00:00-23:59): 376 stations retrieved
+2025-07-10 19:40:15,497 [INFO] ✅ Chunk-005 (2021-02-05 00:00-23:59): 379 stations retrieved
+2025-07-10 19:40:17,949 [INFO] ✅ Chunk-013 (2021-02-13 00:00-23:59): 379 stations retrieved
+2025-07-10 19:40:19,590 [INFO] ✅ Chunk-016 (2021-02-16 00:00-23:59): 379 stations retrieved
+2025-07-10 19:40:20,882 [INFO] ✅ Chunk-017 (2021-02-17 00:00-23:59): 380 stations retrieved
+2025-07-10 19:40:23,321 [INFO] ✅ Chunk-022 (2021-02-22 00:00-23:59): 379 stations retrieved
+2025-07-10 19:40:24,660 [INFO] ✅ Chunk-028 (2021-02-28 00:00-23:59): 375 stations retrieved
+2025-07-10 19:40:26,289 [INFO] ✅ Chunk-008 (2021-02-08 00:00-23:59): 381 stations retrieved
+2025-07-10 19:44:29,391 [INFO] 📈 Progress: 10/28 (35.7%) | ✅ 10 | ❌ 0
+2025-07-10 19:49:19,021 [INFO] 📈 Progress: 20/28 (71.4%) | ✅ 20 | ❌ 0
+2025-07-10 19:53:13,548 [INFO] ✅ Month complete: 1,870,545 records
+2025-07-10 19:53:13,548 [INFO] 📊 Success rate: 100.0%
+2025-07-10 19:53:51,304 [INFO] 💾 Monthly data saved: simple_synoptic_data_2021-01-01_to_2021-12-31_2021-02.csv (1,870,545 records, 176.8 MB)
+2025-07-10 19:53:51,463 [INFO] 
+🗓️  Processing month 3/12: 2021-03
+2025-07-10 19:53:51,463 [INFO] 📅 Month range: 2021-03-01 to 2021-03-31
+2025-07-10 19:53:51,463 [INFO] ------------------------------------------------------------
+2025-07-10 19:53:51,463 [INFO] 🔢 Month chunks: 31
+2025-07-10 19:53:51,463 [INFO] 🧵 Parallel workers: 20
+2025-07-10 19:53:53,567 [INFO] ✅ Chunk-008 (2021-03-08 00:00-23:59): 378 stations retrieved
+2025-07-10 19:53:55,668 [INFO] ✅ Chunk-001 (2021-03-01 00:00-23:59): 377 stations retrieved
+2025-07-10 19:53:57,329 [INFO] ✅ Chunk-014 (2021-03-14 00:00-23:59): 379 stations retrieved
+2025-07-10 19:53:58,787 [INFO] ✅ Chunk-009 (2021-03-09 00:00-23:59): 379 stations retrieved
+2025-07-10 19:54:00,721 [INFO] ✅ Chunk-018 (2021-03-18 00:00-23:59): 380 stations retrieved
+2025-07-10 19:54:01,878 [INFO] ✅ Chunk-016 (2021-03-16 00:00-23:59): 379 stations retrieved
+2025-07-10 19:54:05,543 [INFO] ✅ Chunk-023 (2021-03-23 00:00-23:59): 377 stations retrieved
+2025-07-10 19:54:09,254 [INFO] ✅ Chunk-017 (2021-03-17 00:00-23:59): 378 stations retrieved
+2025-07-10 19:54:12,806 [INFO] ✅ Chunk-027 (2021-03-27 00:00-23:59): 378 stations retrieved
+2025-07-10 19:54:14,105 [INFO] ✅ Chunk-002 (2021-03-02 00:00-23:59): 376 stations retrieved
+2025-07-10 19:54:16,267 [INFO] ✅ Chunk-020 (2021-03-20 00:00-23:59): 376 stations retrieved
+2025-07-10 19:54:18,254 [INFO] ✅ Chunk-030 (2021-03-30 00:00-23:59): 379 stations retrieved
+2025-07-10 19:54:19,709 [INFO] ✅ Chunk-021 (2021-03-21 00:00-23:59): 373 stations retrieved
+2025-07-10 19:54:21,035 [INFO] ✅ Chunk-006 (2021-03-06 00:00-23:59): 376 stations retrieved
+2025-07-10 19:54:23,170 [INFO] ✅ Chunk-029 (2021-03-29 00:00-23:59): 379 stations retrieved
+2025-07-10 19:54:25,150 [INFO] ✅ Chunk-011 (2021-03-11 00:00-23:59): 377 stations retrieved
+2025-07-10 19:54:32,072 [INFO] ✅ Chunk-025 (2021-03-25 00:00-23:59): 378 stations retrieved
+2025-07-10 19:54:35,619 [INFO] ✅ Chunk-028 (2021-03-28 00:00-23:59): 376 stations retrieved
+2025-07-10 19:54:42,854 [INFO] ✅ Chunk-022 (2021-03-22 00:00-23:59): 375 stations retrieved
+2025-07-10 19:54:44,481 [INFO] ✅ Chunk-004 (2021-03-04 00:00-23:59): 377 stations retrieved
+2025-07-10 19:54:46,863 [INFO] ✅ Chunk-015 (2021-03-15 00:00-23:59): 381 stations retrieved
+2025-07-10 19:54:48,994 [INFO] ✅ Chunk-003 (2021-03-03 00:00-23:59): 379 stations retrieved
+2025-07-10 19:54:50,897 [INFO] ✅ Chunk-010 (2021-03-10 00:00-23:59): 380 stations retrieved
+2025-07-10 19:54:52,852 [INFO] ✅ Chunk-005 (2021-03-05 00:00-23:59): 378 stations retrieved
+2025-07-10 19:54:54,584 [INFO] ✅ Chunk-031 (2021-03-31 00:00-23:59): 382 stations retrieved
+2025-07-10 19:54:56,596 [INFO] ✅ Chunk-026 (2021-03-26 00:00-23:59): 379 stations retrieved
+2025-07-10 19:54:58,107 [INFO] ✅ Chunk-019 (2021-03-19 00:00-23:59): 377 stations retrieved
+2025-07-10 19:54:59,669 [INFO] ✅ Chunk-007 (2021-03-07 00:00-23:59): 374 stations retrieved
+2025-07-10 19:55:00,952 [INFO] ✅ Chunk-013 (2021-03-13 00:00-23:59): 377 stations retrieved
+2025-07-10 19:55:02,219 [INFO] ✅ Chunk-024 (2021-03-24 00:00-23:59): 379 stations retrieved
+2025-07-10 19:55:09,765 [INFO] ✅ Chunk-012 (2021-03-12 00:00-23:59): 378 stations retrieved
+2025-07-10 19:58:46,478 [INFO] 📈 Progress: 10/31 (32.3%) | ✅ 10 | ❌ 0
+2025-07-10 20:03:34,051 [INFO] 📈 Progress: 20/31 (64.5%) | ✅ 20 | ❌ 0
+2025-07-10 20:08:23,252 [INFO] 📈 Progress: 30/31 (96.8%) | ✅ 30 | ❌ 0
+2025-07-10 20:08:53,325 [INFO] ✅ Month complete: 2,069,692 records
+2025-07-10 20:08:53,325 [INFO] 📊 Success rate: 100.0%
+2025-07-10 20:09:36,961 [INFO] 💾 Monthly data saved: simple_synoptic_data_2021-01-01_to_2021-12-31_2021-03.csv (2,069,692 records, 195.4 MB)
+2025-07-10 20:09:37,286 [INFO] 
+🗓️  Processing month 4/12: 2021-04
+2025-07-10 20:09:37,286 [INFO] 📅 Month range: 2021-04-01 to 2021-04-30
+2025-07-10 20:09:37,286 [INFO] ------------------------------------------------------------
+2025-07-10 20:09:37,286 [INFO] 🔢 Month chunks: 30
+2025-07-10 20:09:37,286 [INFO] 🧵 Parallel workers: 20
+2025-07-10 20:09:40,228 [INFO] ✅ Chunk-016 (2021-04-16 00:00-23:59): 378 stations retrieved
+2025-07-10 20:09:42,454 [INFO] ✅ Chunk-005 (2021-04-05 00:00-23:59): 378 stations retrieved
+2025-07-10 20:09:43,821 [INFO] ✅ Chunk-009 (2021-04-09 00:00-23:59): 379 stations retrieved
+2025-07-10 20:09:45,781 [INFO] ✅ Chunk-013 (2021-04-13 00:00-23:59): 380 stations retrieved
+2025-07-10 20:09:48,058 [INFO] ✅ Chunk-023 (2021-04-23 00:00-23:59): 375 stations retrieved
+2025-07-10 20:09:49,992 [INFO] ✅ Chunk-010 (2021-04-10 00:00-23:59): 380 stations retrieved
+2025-07-10 20:09:52,058 [INFO] ✅ Chunk-022 (2021-04-22 00:00-23:59): 377 stations retrieved
+2025-07-10 20:09:53,553 [INFO] ✅ Chunk-001 (2021-04-01 00:00-23:59): 382 stations retrieved
+2025-07-10 20:09:55,980 [INFO] ✅ Chunk-006 (2021-04-06 00:00-23:59): 380 stations retrieved
+2025-07-10 20:09:59,356 [INFO] ✅ Chunk-004 (2021-04-04 00:00-23:59): 373 stations retrieved
+2025-07-10 20:10:00,800 [INFO] ✅ Chunk-017 (2021-04-17 00:00-23:59): 375 stations retrieved
+2025-07-10 20:10:04,310 [INFO] ✅ Chunk-019 (2021-04-19 00:00-23:59): 380 stations retrieved
+2025-07-10 20:10:05,710 [INFO] ✅ Chunk-021 (2021-04-21 00:00-23:59): 379 stations retrieved
+2025-07-10 20:10:07,994 [INFO] ✅ Chunk-014 (2021-04-14 00:00-23:59): 379 stations retrieved
+2025-07-10 20:10:09,030 [INFO] ✅ Chunk-027 (2021-04-27 00:00-23:59): 378 stations retrieved
+2025-07-10 20:10:11,483 [INFO] ✅ Chunk-030 (2021-04-30 00:00-23:59): 376 stations retrieved
+2025-07-10 20:10:13,442 [INFO] ✅ Chunk-024 (2021-04-24 00:00-23:59): 375 stations retrieved
+2025-07-10 20:10:25,698 [INFO] ✅ Chunk-028 (2021-04-28 00:00-23:59): 379 stations retrieved
+2025-07-10 20:10:29,882 [INFO] ✅ Chunk-025 (2021-04-25 00:00-23:59): 373 stations retrieved
+2025-07-10 20:10:32,538 [INFO] ✅ Chunk-026 (2021-04-26 00:00-23:59): 378 stations retrieved
+2025-07-10 20:10:33,766 [INFO] ✅ Chunk-008 (2021-04-08 00:00-23:59): 380 stations retrieved
+2025-07-10 20:10:39,919 [INFO] ✅ Chunk-012 (2021-04-12 00:00-23:59): 379 stations retrieved
+2025-07-10 20:10:41,613 [INFO] ✅ Chunk-003 (2021-04-03 00:00-23:59): 376 stations retrieved
+2025-07-10 20:10:43,603 [INFO] ✅ Chunk-018 (2021-04-18 00:00-23:59): 377 stations retrieved
+2025-07-10 20:10:45,053 [INFO] ✅ Chunk-007 (2021-04-07 00:00-23:59): 380 stations retrieved
+2025-07-10 20:10:46,468 [INFO] ✅ Chunk-020 (2021-04-20 00:00-23:59): 379 stations retrieved
+2025-07-10 20:10:48,226 [INFO] ✅ Chunk-002 (2021-04-02 00:00-23:59): 381 stations retrieved
+2025-07-10 20:10:49,978 [INFO] ✅ Chunk-029 (2021-04-29 00:00-23:59): 379 stations retrieved
+2025-07-10 20:10:52,021 [INFO] ✅ Chunk-015 (2021-04-15 00:00-23:59): 381 stations retrieved
+2025-07-10 20:10:54,264 [INFO] ✅ Chunk-011 (2021-04-11 00:00-23:59): 379 stations retrieved
+2025-07-10 20:14:35,261 [INFO] 📈 Progress: 10/30 (33.3%) | ✅ 10 | ❌ 0
+2025-07-10 20:19:21,975 [INFO] 📈 Progress: 20/30 (66.7%) | ✅ 20 | ❌ 0
+2025-07-10 20:24:09,935 [INFO] 📈 Progress: 30/30 (100.0%) | ✅ 30 | ❌ 0
+2025-07-10 20:24:11,926 [INFO] ✅ Month complete: 2,004,836 records
+2025-07-10 20:24:11,926 [INFO] 📊 Success rate: 100.0%
+2025-07-10 20:24:49,726 [INFO] 💾 Monthly data saved: simple_synoptic_data_2021-01-01_to_2021-12-31_2021-04.csv (2,004,836 records, 189.5 MB)
+2025-07-10 20:24:49,911 [INFO] 
+🗓️  Processing month 5/12: 2021-05
+2025-07-10 20:24:49,911 [INFO] 📅 Month range: 2021-05-01 to 2021-05-31
+2025-07-10 20:24:49,911 [INFO] ------------------------------------------------------------
+2025-07-10 20:24:49,911 [INFO] 🔢 Month chunks: 31
+2025-07-10 20:24:49,911 [INFO] 🧵 Parallel workers: 20
+2025-07-10 20:24:52,739 [INFO] ✅ Chunk-005 (2021-05-05 00:00-23:59): 383 stations retrieved
+2025-07-10 20:24:55,467 [INFO] ✅ Chunk-016 (2021-05-16 00:00-23:59): 373 stations retrieved
+2025-07-10 20:24:57,487 [INFO] ✅ Chunk-020 (2021-05-20 00:00-23:59): 381 stations retrieved
+2025-07-10 20:24:59,343 [INFO] ✅ Chunk-021 (2021-05-21 00:00-23:59): 379 stations retrieved
+2025-07-10 20:25:01,263 [INFO] ✅ Chunk-023 (2021-05-23 00:00-23:59): 377 stations retrieved
+2025-07-10 20:25:02,903 [INFO] ✅ Chunk-019 (2021-05-19 00:00-23:59): 377 stations retrieved
+2025-07-10 20:25:05,470 [INFO] ✅ Chunk-017 (2021-05-17 00:00-23:59): 377 stations retrieved
+2025-07-10 20:25:07,228 [INFO] ✅ Chunk-015 (2021-05-15 00:00-23:59): 375 stations retrieved
+2025-07-10 20:25:09,346 [INFO] ✅ Chunk-026 (2021-05-26 00:00-23:59): 379 stations retrieved
+2025-07-10 20:25:11,760 [INFO] ✅ Chunk-011 (2021-05-11 00:00-23:59): 380 stations retrieved
+2025-07-10 20:25:18,301 [INFO] ✅ Chunk-012 (2021-05-12 00:00-23:59): 380 stations retrieved
+2025-07-10 20:25:19,009 [INFO] ✅ Chunk-002 (2021-05-02 00:00-23:59): 377 stations retrieved
+2025-07-10 20:25:20,448 [INFO] ✅ Chunk-028 (2021-05-28 00:00-23:59): 371 stations retrieved
+2025-07-10 20:25:22,649 [INFO] ✅ Chunk-031 (2021-05-31 00:00-23:59): 373 stations retrieved
+2025-07-10 20:25:24,782 [INFO] ✅ Chunk-025 (2021-05-25 00:00-23:59): 379 stations retrieved
+2025-07-10 20:25:26,447 [INFO] ✅ Chunk-001 (2021-05-01 00:00-23:59): 376 stations retrieved
+2025-07-10 20:25:28,527 [INFO] ✅ Chunk-014 (2021-05-14 00:00-23:59): 380 stations retrieved
+2025-07-10 20:25:33,431 [INFO] ✅ Chunk-029 (2021-05-29 00:00-23:59): 373 stations retrieved
+2025-07-10 20:25:35,477 [INFO] ✅ Chunk-018 (2021-05-18 00:00-23:59): 376 stations retrieved
+2025-07-10 20:25:37,216 [INFO] ✅ Chunk-007 (2021-05-07 00:00-23:59): 382 stations retrieved
+2025-07-10 20:25:39,836 [INFO] ✅ Chunk-006 (2021-05-06 00:00-23:59): 381 stations retrieved
+2025-07-10 20:25:41,825 [INFO] ✅ Chunk-013 (2021-05-13 00:00-23:59): 380 stations retrieved
+2025-07-10 20:25:43,881 [INFO] ✅ Chunk-022 (2021-05-22 00:00-23:59): 378 stations retrieved
+2025-07-10 20:25:46,630 [INFO] ✅ Chunk-010 (2021-05-10 00:00-23:59): 381 stations retrieved
+2025-07-10 20:25:49,770 [INFO] ✅ Chunk-027 (2021-05-27 00:00-23:59): 379 stations retrieved
+2025-07-10 20:25:51,615 [INFO] ✅ Chunk-024 (2021-05-24 00:00-23:59): 379 stations retrieved
+2025-07-10 20:25:52,697 [INFO] ✅ Chunk-004 (2021-05-04 00:00-23:59): 381 stations retrieved
+2025-07-10 20:25:54,323 [INFO] ✅ Chunk-009 (2021-05-09 00:00-23:59): 378 stations retrieved
+2025-07-10 20:25:57,160 [INFO] ✅ Chunk-003 (2021-05-03 00:00-23:59): 376 stations retrieved
+2025-07-10 20:26:00,291 [INFO] ✅ Chunk-008 (2021-05-08 00:00-23:59): 380 stations retrieved
+2025-07-10 20:26:01,372 [INFO] ✅ Chunk-030 (2021-05-30 00:00-23:59): 374 stations retrieved
+2025-07-10 20:29:42,578 [INFO] 📈 Progress: 10/31 (32.3%) | ✅ 10 | ❌ 0
+2025-07-10 20:34:25,323 [INFO] 📈 Progress: 20/31 (64.5%) | ✅ 20 | ❌ 0
+2025-07-10 20:39:15,273 [INFO] 📈 Progress: 30/31 (96.8%) | ✅ 30 | ❌ 0
+2025-07-10 20:39:45,720 [INFO] ✅ Month complete: 2,060,109 records
+2025-07-10 20:39:45,720 [INFO] 📊 Success rate: 100.0%
+2025-07-10 20:40:26,685 [INFO] 💾 Monthly data saved: simple_synoptic_data_2021-01-01_to_2021-12-31_2021-05.csv (2,060,109 records, 195.0 MB)
+2025-07-10 20:40:26,918 [INFO] 
+🗓️  Processing month 6/12: 2021-06
+2025-07-10 20:40:26,918 [INFO] 📅 Month range: 2021-06-01 to 2021-06-30
+2025-07-10 20:40:26,918 [INFO] ------------------------------------------------------------
+2025-07-10 20:40:26,918 [INFO] 🔢 Month chunks: 30
+2025-07-10 20:40:26,918 [INFO] 🧵 Parallel workers: 20
+2025-07-10 20:40:29,809 [INFO] ✅ Chunk-001 (2021-06-01 00:00-23:59): 374 stations retrieved
+2025-07-10 20:40:32,169 [INFO] ✅ Chunk-020 (2021-06-20 00:00-23:59): 372 stations retrieved
+2025-07-10 20:40:33,651 [INFO] ✅ Chunk-006 (2021-06-06 00:00-23:59): 372 stations retrieved
+2025-07-10 20:40:35,225 [INFO] ✅ Chunk-022 (2021-06-22 00:00-23:59): 379 stations retrieved
+2025-07-10 20:40:36,858 [INFO] ✅ Chunk-002 (2021-06-02 00:00-23:59): 375 stations retrieved
+2025-07-10 20:40:40,031 [INFO] ✅ Chunk-009 (2021-06-09 00:00-23:59): 376 stations retrieved
+2025-07-10 20:40:42,338 [INFO] ✅ Chunk-023 (2021-06-23 00:00-23:59): 376 stations retrieved
+2025-07-10 20:40:43,591 [INFO] ✅ Chunk-021 (2021-06-21 00:00-23:59): 377 stations retrieved
+2025-07-10 20:40:45,025 [INFO] ✅ Chunk-014 (2021-06-14 00:00-23:59): 378 stations retrieved
+2025-07-10 20:40:47,825 [INFO] ✅ Chunk-025 (2021-06-25 00:00-23:59): 375 stations retrieved
+2025-07-10 20:40:49,577 [INFO] ✅ Chunk-026 (2021-06-26 00:00-23:59): 376 stations retrieved
+2025-07-10 20:40:52,302 [INFO] ✅ Chunk-024 (2021-06-24 00:00-23:59): 374 stations retrieved
+2025-07-10 20:40:53,117 [INFO] ✅ Chunk-019 (2021-06-19 00:00-23:59): 373 stations retrieved
+2025-07-10 20:40:55,405 [INFO] ✅ Chunk-007 (2021-06-07 00:00-23:59): 373 stations retrieved
+2025-07-10 20:40:57,643 [INFO] ✅ Chunk-028 (2021-06-28 00:00-23:59): 375 stations retrieved
+2025-07-10 20:40:59,443 [INFO] ✅ Chunk-004 (2021-06-04 00:00-23:59): 371 stations retrieved
+2025-07-10 20:41:00,950 [INFO] ✅ Chunk-017 (2021-06-17 00:00-23:59): 378 stations retrieved
+2025-07-10 20:41:02,654 [INFO] ✅ Chunk-030 (2021-06-30 00:00-23:59): 377 stations retrieved
+2025-07-10 20:41:04,660 [INFO] ✅ Chunk-011 (2021-06-11 00:00-23:59): 376 stations retrieved
+2025-07-10 20:41:07,496 [INFO] ✅ Chunk-005 (2021-06-05 00:00-23:59): 371 stations retrieved
+2025-07-10 20:41:09,148 [INFO] ✅ Chunk-010 (2021-06-10 00:00-23:59): 376 stations retrieved
+2025-07-10 20:41:12,159 [INFO] ✅ Chunk-008 (2021-06-08 00:00-23:59): 375 stations retrieved
+2025-07-10 20:41:14,114 [INFO] ✅ Chunk-012 (2021-06-12 00:00-23:59): 377 stations retrieved
+2025-07-10 20:41:16,115 [INFO] ✅ Chunk-018 (2021-06-18 00:00-23:59): 376 stations retrieved
+2025-07-10 20:41:18,703 [INFO] ✅ Chunk-016 (2021-06-16 00:00-23:59): 381 stations retrieved
+2025-07-10 20:41:20,400 [INFO] ✅ Chunk-003 (2021-06-03 00:00-23:59): 374 stations retrieved
+2025-07-10 20:41:22,601 [INFO] ✅ Chunk-029 (2021-06-29 00:00-23:59): 376 stations retrieved
+2025-07-10 20:41:24,478 [INFO] ✅ Chunk-013 (2021-06-13 00:00-23:59): 374 stations retrieved
+2025-07-10 20:41:26,832 [INFO] ✅ Chunk-015 (2021-06-15 00:00-23:59): 381 stations retrieved
+2025-07-10 20:41:28,892 [INFO] ✅ Chunk-027 (2021-06-27 00:00-23:59): 371 stations retrieved
+2025-07-10 20:45:36,186 [INFO] 📈 Progress: 10/30 (33.3%) | ✅ 10 | ❌ 0
+2025-07-10 20:50:27,328 [INFO] 📈 Progress: 20/30 (66.7%) | ✅ 20 | ❌ 0
+2025-07-10 20:55:14,871 [INFO] 📈 Progress: 30/30 (100.0%) | ✅ 30 | ❌ 0
+2025-07-10 20:55:16,867 [INFO] ✅ Month complete: 1,994,137 records
+2025-07-10 20:55:16,867 [INFO] 📊 Success rate: 100.0%
+2025-07-10 20:55:54,540 [INFO] 💾 Monthly data saved: simple_synoptic_data_2021-01-01_to_2021-12-31_2021-06.csv (1,994,137 records, 189.3 MB)
+2025-07-10 20:55:54,797 [INFO] 
+🗓️  Processing month 7/12: 2021-07
+2025-07-10 20:55:54,797 [INFO] 📅 Month range: 2021-07-01 to 2021-07-31
+2025-07-10 20:55:54,797 [INFO] ------------------------------------------------------------
+2025-07-10 20:55:54,797 [INFO] 🔢 Month chunks: 31
+2025-07-10 20:55:54,797 [INFO] 🧵 Parallel workers: 20
+2025-07-10 20:55:57,735 [INFO] ✅ Chunk-004 (2021-07-04 00:00-23:59): 373 stations retrieved
+2025-07-10 20:56:00,179 [INFO] ✅ Chunk-007 (2021-07-07 00:00-23:59): 378 stations retrieved
+2025-07-10 20:56:01,747 [INFO] ✅ Chunk-012 (2021-07-12 00:00-23:59): 379 stations retrieved
+2025-07-10 20:56:04,440 [INFO] ✅ Chunk-022 (2021-07-22 00:00-23:59): 377 stations retrieved
+2025-07-10 20:56:06,336 [INFO] ✅ Chunk-020 (2021-07-20 00:00-23:59): 373 stations retrieved
+2025-07-10 20:56:07,747 [INFO] ✅ Chunk-021 (2021-07-21 00:00-23:59): 377 stations retrieved
+2025-07-10 20:56:10,189 [INFO] ✅ Chunk-025 (2021-07-25 00:00-23:59): 374 stations retrieved
+2025-07-10 20:56:12,527 [INFO] ✅ Chunk-005 (2021-07-05 00:00-23:59): 374 stations retrieved
+2025-07-10 20:56:14,885 [INFO] ✅ Chunk-018 (2021-07-18 00:00-23:59): 373 stations retrieved
+2025-07-10 20:56:17,035 [INFO] ✅ Chunk-014 (2021-07-14 00:00-23:59): 379 stations retrieved
+2025-07-10 20:56:21,822 [INFO] ✅ Chunk-027 (2021-07-27 00:00-23:59): 378 stations retrieved
+2025-07-10 20:56:23,917 [INFO] ✅ Chunk-013 (2021-07-13 00:00-23:59): 379 stations retrieved
+2025-07-10 20:56:26,349 [INFO] ✅ Chunk-017 (2021-07-17 00:00-23:59): 373 stations retrieved
+2025-07-10 20:56:27,917 [INFO] ✅ Chunk-028 (2021-07-28 00:00-23:59): 376 stations retrieved
+2025-07-10 20:56:29,637 [INFO] ✅ Chunk-029 (2021-07-29 00:00-23:59): 378 stations retrieved
+2025-07-10 20:56:31,313 [INFO] ✅ Chunk-015 (2021-07-15 00:00-23:59): 378 stations retrieved
+2025-07-10 20:56:33,484 [INFO] ✅ Chunk-001 (2021-07-01 00:00-23:59): 375 stations retrieved
+2025-07-10 20:56:36,001 [INFO] ✅ Chunk-023 (2021-07-23 00:00-23:59): 378 stations retrieved
+2025-07-10 20:56:38,462 [INFO] ✅ Chunk-024 (2021-07-24 00:00-23:59): 376 stations retrieved
+2025-07-10 20:56:39,895 [INFO] ✅ Chunk-002 (2021-07-02 00:00-23:59): 378 stations retrieved
+2025-07-10 20:56:42,013 [INFO] ✅ Chunk-030 (2021-07-30 00:00-23:59): 379 stations retrieved
+2025-07-10 20:56:43,897 [INFO] ✅ Chunk-008 (2021-07-08 00:00-23:59): 379 stations retrieved
+2025-07-10 20:56:46,788 [INFO] ✅ Chunk-003 (2021-07-03 00:00-23:59): 377 stations retrieved
+2025-07-10 20:56:48,684 [INFO] ✅ Chunk-026 (2021-07-26 00:00-23:59): 376 stations retrieved
+2025-07-10 20:56:50,441 [INFO] ✅ Chunk-009 (2021-07-09 00:00-23:59): 378 stations retrieved
+2025-07-10 20:56:52,547 [INFO] ✅ Chunk-010 (2021-07-10 00:00-23:59): 377 stations retrieved
+2025-07-10 20:56:54,065 [INFO] ✅ Chunk-011 (2021-07-11 00:00-23:59): 375 stations retrieved
+2025-07-10 20:56:55,343 [INFO] ✅ Chunk-019 (2021-07-19 00:00-23:59): 373 stations retrieved
+2025-07-10 20:56:59,023 [INFO] ✅ Chunk-006 (2021-07-06 00:00-23:59): 378 stations retrieved
+2025-07-10 20:57:00,660 [INFO] ✅ Chunk-031 (2021-07-31 00:00-23:59): 376 stations retrieved
+2025-07-10 20:57:02,571 [INFO] ✅ Chunk-016 (2021-07-16 00:00-23:59): 376 stations retrieved
+2025-07-10 21:00:48,207 [INFO] 📈 Progress: 10/31 (32.3%) | ✅ 10 | ❌ 0
+2025-07-10 21:05:35,857 [INFO] 📈 Progress: 20/31 (64.5%) | ✅ 20 | ❌ 0
+2025-07-10 21:10:21,524 [INFO] 📈 Progress: 30/31 (96.8%) | ✅ 30 | ❌ 0
+2025-07-10 21:10:52,078 [INFO] ✅ Month complete: 2,058,555 records
+2025-07-10 21:10:52,079 [INFO] 📊 Success rate: 100.0%
+2025-07-10 21:11:29,845 [INFO] 💾 Monthly data saved: simple_synoptic_data_2021-01-01_to_2021-12-31_2021-07.csv (2,058,555 records, 195.4 MB)
+2025-07-10 21:11:29,999 [INFO] 
+🗓️  Processing month 8/12: 2021-08
+2025-07-10 21:11:29,999 [INFO] 📅 Month range: 2021-08-01 to 2021-08-31
+2025-07-10 21:11:29,999 [INFO] ------------------------------------------------------------
+2025-07-10 21:11:29,999 [INFO] 🔢 Month chunks: 31
+2025-07-10 21:11:29,999 [INFO] 🧵 Parallel workers: 20
+2025-07-10 21:11:33,109 [INFO] ✅ Chunk-001 (2021-08-01 00:00-23:59): 376 stations retrieved
+2025-07-10 21:11:36,608 [INFO] ✅ Chunk-016 (2021-08-16 00:00-23:59): 377 stations retrieved
+2025-07-10 21:11:38,764 [INFO] ✅ Chunk-009 (2021-08-09 00:00-23:59): 378 stations retrieved
+2025-07-10 21:11:40,157 [INFO] ✅ Chunk-007 (2021-08-07 00:00-23:59): 376 stations retrieved
+2025-07-10 21:11:42,840 [INFO] ✅ Chunk-004 (2021-08-04 00:00-23:59): 381 stations retrieved
+2025-07-10 21:11:50,991 [INFO] ✅ Chunk-010 (2021-08-10 00:00-23:59): 378 stations retrieved
+2025-07-10 21:11:53,618 [INFO] ✅ Chunk-021 (2021-08-21 00:00-23:59): 376 stations retrieved
+2025-07-10 21:11:56,340 [INFO] ✅ Chunk-012 (2021-08-12 00:00-23:59): 377 stations retrieved
+2025-07-10 21:11:59,169 [INFO] ✅ Chunk-020 (2021-08-20 00:00-23:59): 377 stations retrieved
+2025-07-10 21:12:01,736 [INFO] ✅ Chunk-024 (2021-08-24 00:00-23:59): 379 stations retrieved
+2025-07-10 21:12:04,208 [INFO] ✅ Chunk-022 (2021-08-22 00:00-23:59): 376 stations retrieved
+2025-07-10 21:12:07,162 [INFO] ✅ Chunk-029 (2021-08-29 00:00-23:59): 372 stations retrieved
+2025-07-10 21:12:09,277 [INFO] ✅ Chunk-019 (2021-08-19 00:00-23:59): 380 stations retrieved
+2025-07-10 21:12:11,589 [INFO] ✅ Chunk-026 (2021-08-26 00:00-23:59): 376 stations retrieved
+2025-07-10 21:12:13,608 [INFO] ✅ Chunk-023 (2021-08-23 00:00-23:59): 379 stations retrieved
+2025-07-10 21:12:15,705 [INFO] ✅ Chunk-008 (2021-08-08 00:00-23:59): 375 stations retrieved
+2025-07-10 21:12:17,983 [INFO] ✅ Chunk-011 (2021-08-11 00:00-23:59): 378 stations retrieved
+2025-07-10 21:12:20,118 [INFO] ✅ Chunk-027 (2021-08-27 00:00-23:59): 377 stations retrieved
+2025-07-10 21:12:22,328 [INFO] ✅ Chunk-017 (2021-08-17 00:00-23:59): 379 stations retrieved
+2025-07-10 21:12:24,652 [INFO] ✅ Chunk-028 (2021-08-28 00:00-23:59): 373 stations retrieved
+2025-07-10 21:12:26,808 [INFO] ✅ Chunk-003 (2021-08-03 00:00-23:59): 381 stations retrieved
+2025-07-10 21:12:29,390 [INFO] ✅ Chunk-014 (2021-08-14 00:00-23:59): 374 stations retrieved
+2025-07-10 21:12:32,297 [INFO] ✅ Chunk-030 (2021-08-30 00:00-23:59): 377 stations retrieved
+2025-07-10 21:12:34,188 [INFO] ✅ Chunk-031 (2021-08-31 00:00-23:59): 377 stations retrieved
+2025-07-10 21:12:35,967 [INFO] ✅ Chunk-002 (2021-08-02 00:00-23:59): 379 stations retrieved
+2025-07-10 21:12:38,470 [INFO] ✅ Chunk-006 (2021-08-06 00:00-23:59): 377 stations retrieved
+2025-07-10 21:12:41,036 [INFO] ✅ Chunk-018 (2021-08-18 00:00-23:59): 379 stations retrieved
+2025-07-10 21:12:42,901 [INFO] ✅ Chunk-005 (2021-08-05 00:00-23:59): 378 stations retrieved
+2025-07-10 21:12:45,053 [INFO] ✅ Chunk-015 (2021-08-15 00:00-23:59): 373 stations retrieved
+2025-07-10 21:12:47,272 [INFO] ✅ Chunk-025 (2021-08-25 00:00-23:59): 377 stations retrieved
+2025-07-10 21:12:50,029 [INFO] ✅ Chunk-013 (2021-08-13 00:00-23:59): 375 stations retrieved
+2025-07-10 21:16:28,587 [INFO] 📈 Progress: 10/31 (32.3%) | ✅ 10 | ❌ 0
+2025-07-10 21:21:11,783 [INFO] 📈 Progress: 20/31 (64.5%) | ✅ 20 | ❌ 0
+2025-07-10 21:25:57,862 [INFO] 📈 Progress: 30/31 (96.8%) | ✅ 30 | ❌ 0
+2025-07-10 21:26:28,508 [INFO] ✅ Month complete: 2,062,119 records
+2025-07-10 21:26:28,508 [INFO] 📊 Success rate: 100.0%
+2025-07-10 21:27:07,050 [INFO] 💾 Monthly data saved: simple_synoptic_data_2021-01-01_to_2021-12-31_2021-08.csv (2,062,119 records, 195.7 MB)
+2025-07-10 21:27:07,204 [INFO] 
+🗓️  Processing month 9/12: 2021-09
+2025-07-10 21:27:07,204 [INFO] 📅 Month range: 2021-09-01 to 2021-09-30
+2025-07-10 21:27:07,204 [INFO] ------------------------------------------------------------
+2025-07-10 21:27:07,204 [INFO] 🔢 Month chunks: 30
+2025-07-10 21:27:07,204 [INFO] 🧵 Parallel workers: 20
+2025-07-10 21:27:10,747 [INFO] ✅ Chunk-002 (2021-09-02 00:00-23:59): 378 stations retrieved
+2025-07-10 21:27:13,494 [INFO] ✅ Chunk-008 (2021-09-08 00:00-23:59): 374 stations retrieved
+2025-07-10 21:27:16,970 [INFO] ✅ Chunk-020 (2021-09-20 00:00-23:59): 374 stations retrieved
+2025-07-10 21:27:19,791 [INFO] ✅ Chunk-019 (2021-09-19 00:00-23:59): 372 stations retrieved
+2025-07-10 21:27:22,931 [INFO] ✅ Chunk-023 (2021-09-23 00:00-23:59): 377 stations retrieved
+2025-07-10 21:27:25,423 [INFO] ✅ Chunk-022 (2021-09-22 00:00-23:59): 377 stations retrieved
+2025-07-10 21:27:28,112 [INFO] ✅ Chunk-017 (2021-09-17 00:00-23:59): 379 stations retrieved
+2025-07-10 21:27:30,562 [INFO] ✅ Chunk-011 (2021-09-11 00:00-23:59): 374 stations retrieved
+2025-07-10 21:27:33,252 [INFO] ✅ Chunk-026 (2021-09-26 00:00-23:59): 376 stations retrieved
+2025-07-10 21:27:36,016 [INFO] ✅ Chunk-004 (2021-09-04 00:00-23:59): 372 stations retrieved
+2025-07-10 21:27:37,217 [INFO] ✅ Chunk-029 (2021-09-29 00:00-23:59): 377 stations retrieved
+2025-07-10 21:27:39,592 [INFO] ✅ Chunk-030 (2021-09-30 00:00-23:59): 377 stations retrieved
+2025-07-10 21:27:41,886 [INFO] ✅ Chunk-027 (2021-09-27 00:00-23:59): 378 stations retrieved
+2025-07-10 21:27:44,379 [INFO] ✅ Chunk-014 (2021-09-14 00:00-23:59): 378 stations retrieved
+2025-07-10 21:27:46,688 [INFO] ✅ Chunk-005 (2021-09-05 00:00-23:59): 371 stations retrieved
+2025-07-10 21:27:48,643 [INFO] ✅ Chunk-003 (2021-09-03 00:00-23:59): 376 stations retrieved
+2025-07-10 21:27:51,451 [INFO] ✅ Chunk-028 (2021-09-28 00:00-23:59): 378 stations retrieved
+2025-07-10 21:27:53,086 [INFO] ✅ Chunk-021 (2021-09-21 00:00-23:59): 378 stations retrieved
+2025-07-10 21:27:55,410 [INFO] ✅ Chunk-006 (2021-09-06 00:00-23:59): 372 stations retrieved
+2025-07-10 21:27:58,748 [INFO] ✅ Chunk-018 (2021-09-18 00:00-23:59): 377 stations retrieved
+2025-07-10 21:28:00,970 [INFO] ✅ Chunk-024 (2021-09-24 00:00-23:59): 377 stations retrieved
+2025-07-10 21:28:03,653 [INFO] ✅ Chunk-001 (2021-09-01 00:00-23:59): 376 stations retrieved
+2025-07-10 21:28:05,381 [INFO] ✅ Chunk-012 (2021-09-12 00:00-23:59): 371 stations retrieved
+2025-07-10 21:28:07,880 [INFO] ✅ Chunk-013 (2021-09-13 00:00-23:59): 377 stations retrieved
+2025-07-10 21:28:09,925 [INFO] ✅ Chunk-025 (2021-09-25 00:00-23:59): 376 stations retrieved
+2025-07-10 21:28:13,001 [INFO] ✅ Chunk-009 (2021-09-09 00:00-23:59): 377 stations retrieved
+2025-07-10 21:28:16,046 [INFO] ✅ Chunk-015 (2021-09-15 00:00-23:59): 379 stations retrieved
+2025-07-10 21:28:18,266 [INFO] ✅ Chunk-010 (2021-09-10 00:00-23:59): 375 stations retrieved
+2025-07-10 21:28:20,345 [INFO] ✅ Chunk-016 (2021-09-16 00:00-23:59): 380 stations retrieved
+2025-07-10 21:28:22,360 [INFO] ✅ Chunk-007 (2021-09-07 00:00-23:59): 374 stations retrieved
+2025-07-10 21:31:54,075 [INFO] 📈 Progress: 10/30 (33.3%) | ✅ 10 | ❌ 0
+2025-07-10 21:36:27,175 [INFO] 📈 Progress: 20/30 (66.7%) | ✅ 20 | ❌ 0
+2025-07-10 21:41:09,875 [INFO] 📈 Progress: 30/30 (100.0%) | ✅ 30 | ❌ 0
+2025-07-10 21:41:11,828 [INFO] ✅ Month complete: 1,956,736 records
+2025-07-10 21:41:11,828 [INFO] 📊 Success rate: 100.0%
+2025-07-10 21:41:48,945 [INFO] 💾 Monthly data saved: simple_synoptic_data_2021-01-01_to_2021-12-31_2021-09.csv (1,956,736 records, 185.6 MB)
+2025-07-10 21:41:49,066 [INFO] 
+🗓️  Processing month 10/12: 2021-10
+2025-07-10 21:41:49,066 [INFO] 📅 Month range: 2021-10-01 to 2021-10-31
+2025-07-10 21:41:49,066 [INFO] ------------------------------------------------------------
+2025-07-10 21:41:49,066 [INFO] 🔢 Month chunks: 31
+2025-07-10 21:41:49,066 [INFO] 🧵 Parallel workers: 20
+2025-07-10 21:41:52,388 [INFO] ✅ Chunk-002 (2021-10-02 00:00-23:59): 375 stations retrieved
+2025-07-10 21:41:55,911 [INFO] ✅ Chunk-014 (2021-10-14 00:00-23:59): 378 stations retrieved
+2025-07-10 21:41:58,755 [INFO] ✅ Chunk-007 (2021-10-07 00:00-23:59): 375 stations retrieved
+2025-07-10 21:42:01,044 [INFO] ✅ Chunk-018 (2021-10-18 00:00-23:59): 381 stations retrieved
+2025-07-10 21:42:03,849 [INFO] ✅ Chunk-023 (2021-10-23 00:00-23:59): 375 stations retrieved
+2025-07-10 21:42:06,177 [INFO] ✅ Chunk-024 (2021-10-24 00:00-23:59): 377 stations retrieved
+2025-07-10 21:42:11,312 [INFO] ✅ Chunk-016 (2021-10-16 00:00-23:59): 376 stations retrieved
+2025-07-10 21:42:13,679 [INFO] ✅ Chunk-013 (2021-10-13 00:00-23:59): 380 stations retrieved
+2025-07-10 21:42:18,294 [INFO] ✅ Chunk-025 (2021-10-25 00:00-23:59): 379 stations retrieved
+2025-07-10 21:42:18,628 [INFO] ✅ Chunk-008 (2021-10-08 00:00-23:59): 374 stations retrieved
+2025-07-10 21:42:21,112 [INFO] ✅ Chunk-006 (2021-10-06 00:00-23:59): 375 stations retrieved
+2025-07-10 21:42:24,376 [INFO] ✅ Chunk-004 (2021-10-04 00:00-23:59): 374 stations retrieved
+2025-07-10 21:42:30,403 [INFO] ✅ Chunk-005 (2021-10-05 00:00-23:59): 374 stations retrieved
+2025-07-10 21:42:32,592 [INFO] ✅ Chunk-003 (2021-10-03 00:00-23:59): 371 stations retrieved
+2025-07-10 21:42:35,172 [INFO] ✅ Chunk-031 (2021-10-31 00:00-23:59): 376 stations retrieved
+2025-07-10 21:42:39,377 [INFO] ✅ Chunk-027 (2021-10-27 00:00-23:59): 379 stations retrieved
+2025-07-10 21:42:42,565 [INFO] ✅ Chunk-030 (2021-10-30 00:00-23:59): 378 stations retrieved
+2025-07-10 21:42:44,238 [INFO] ✅ Chunk-009 (2021-10-09 00:00-23:59): 372 stations retrieved
+2025-07-10 21:42:47,882 [INFO] ✅ Chunk-010 (2021-10-10 00:00-23:59): 371 stations retrieved
+2025-07-10 21:42:50,444 [INFO] ✅ Chunk-011 (2021-10-11 00:00-23:59): 371 stations retrieved
+2025-07-10 21:42:53,688 [INFO] ✅ Chunk-026 (2021-10-26 00:00-23:59): 377 stations retrieved
+2025-07-10 21:42:56,058 [INFO] ✅ Chunk-022 (2021-10-22 00:00-23:59): 379 stations retrieved
+2025-07-10 21:42:58,922 [INFO] ✅ Chunk-017 (2021-10-17 00:00-23:59): 376 stations retrieved
+2025-07-10 21:43:00,886 [INFO] ✅ Chunk-015 (2021-10-15 00:00-23:59): 379 stations retrieved
+2025-07-10 21:43:03,708 [INFO] ✅ Chunk-019 (2021-10-19 00:00-23:59): 379 stations retrieved
+2025-07-10 21:43:06,208 [INFO] ✅ Chunk-028 (2021-10-28 00:00-23:59): 375 stations retrieved
+2025-07-10 21:43:08,491 [INFO] ✅ Chunk-001 (2021-10-01 00:00-23:59): 376 stations retrieved
+2025-07-10 21:43:11,053 [INFO] ✅ Chunk-021 (2021-10-21 00:00-23:59): 379 stations retrieved
+2025-07-10 21:43:14,474 [INFO] ✅ Chunk-029 (2021-10-29 00:00-23:59): 375 stations retrieved
+2025-07-10 21:43:16,808 [INFO] ✅ Chunk-020 (2021-10-20 00:00-23:59): 378 stations retrieved
+2025-07-10 21:43:20,107 [INFO] ✅ Chunk-012 (2021-10-12 00:00-23:59): 380 stations retrieved
+2025-07-10 21:46:40,950 [INFO] 📈 Progress: 10/31 (32.3%) | ✅ 10 | ❌ 0
+2025-07-10 21:51:33,627 [INFO] 📈 Progress: 20/31 (64.5%) | ✅ 20 | ❌ 0
+2025-07-10 21:56:27,949 [INFO] 📈 Progress: 30/31 (96.8%) | ✅ 30 | ❌ 0
+2025-07-10 21:56:59,854 [INFO] ✅ Month complete: 2,082,535 records
+2025-07-10 21:56:59,854 [INFO] 📊 Success rate: 100.0%
+2025-07-10 21:57:42,152 [INFO] 💾 Monthly data saved: simple_synoptic_data_2021-01-01_to_2021-12-31_2021-10.csv (2,082,535 records, 197.1 MB)
+2025-07-10 21:57:42,312 [INFO] 
+🗓️  Processing month 11/12: 2021-11
+2025-07-10 21:57:42,312 [INFO] 📅 Month range: 2021-11-01 to 2021-11-30
+2025-07-10 21:57:42,312 [INFO] ------------------------------------------------------------
+2025-07-10 21:57:42,312 [INFO] 🔢 Month chunks: 30
+2025-07-10 21:57:42,312 [INFO] 🧵 Parallel workers: 20
+2025-07-10 21:57:45,854 [INFO] ✅ Chunk-001 (2021-11-01 00:00-23:59): 379 stations retrieved
+2025-07-10 21:57:48,666 [INFO] ✅ Chunk-003 (2021-11-03 00:00-23:59): 380 stations retrieved
+2025-07-10 21:57:51,149 [INFO] ✅ Chunk-018 (2021-11-18 00:00-23:59): 381 stations retrieved
+2025-07-10 21:57:53,175 [INFO] ✅ Chunk-022 (2021-11-22 00:00-23:59): 379 stations retrieved
+2025-07-10 21:57:55,679 [INFO] ✅ Chunk-017 (2021-11-17 00:00-23:59): 381 stations retrieved
+2025-07-10 21:57:58,364 [INFO] ✅ Chunk-024 (2021-11-24 00:00-23:59): 382 stations retrieved
+2025-07-10 21:58:00,961 [INFO] ✅ Chunk-020 (2021-11-20 00:00-23:59): 379 stations retrieved
+2025-07-10 21:58:03,233 [INFO] ✅ Chunk-002 (2021-11-02 00:00-23:59): 379 stations retrieved
+2025-07-10 21:58:05,451 [INFO] ✅ Chunk-013 (2021-11-13 00:00-23:59): 379 stations retrieved
+2025-07-10 21:58:07,352 [INFO] ✅ Chunk-025 (2021-11-25 00:00-23:59): 378 stations retrieved
+2025-07-10 21:58:13,420 [INFO] ✅ Chunk-026 (2021-11-26 00:00-23:59): 381 stations retrieved
+2025-07-10 21:58:16,017 [INFO] ✅ Chunk-007 (2021-11-07 00:00-23:59): 379 stations retrieved
+2025-07-10 21:58:19,082 [INFO] ✅ Chunk-009 (2021-11-09 00:00-23:59): 380 stations retrieved
+2025-07-10 21:58:21,246 [INFO] ✅ Chunk-028 (2021-11-28 00:00-23:59): 379 stations retrieved
+2025-07-10 21:58:23,396 [INFO] ✅ Chunk-005 (2021-11-05 00:00-23:59): 380 stations retrieved
+2025-07-10 21:58:25,830 [INFO] ✅ Chunk-030 (2021-11-30 00:00-23:59): 379 stations retrieved
+2025-07-10 21:58:28,239 [INFO] ✅ Chunk-011 (2021-11-11 00:00-23:59): 378 stations retrieved
+2025-07-10 21:58:29,802 [INFO] ✅ Chunk-010 (2021-11-10 00:00-23:59): 381 stations retrieved
+2025-07-10 21:58:31,874 [INFO] ✅ Chunk-012 (2021-11-12 00:00-23:59): 379 stations retrieved
+2025-07-10 21:58:34,970 [INFO] ✅ Chunk-014 (2021-11-14 00:00-23:59): 377 stations retrieved
+2025-07-10 21:58:38,326 [INFO] ✅ Chunk-015 (2021-11-15 00:00-23:59): 381 stations retrieved
+2025-07-10 21:58:39,514 [INFO] ✅ Chunk-004 (2021-11-04 00:00-23:59): 380 stations retrieved
+2025-07-10 21:58:41,531 [INFO] ✅ Chunk-008 (2021-11-08 00:00-23:59): 380 stations retrieved
+2025-07-10 21:58:43,962 [INFO] ✅ Chunk-023 (2021-11-23 00:00-23:59): 381 stations retrieved
+2025-07-10 21:58:45,838 [INFO] ✅ Chunk-006 (2021-11-06 00:00-23:59): 379 stations retrieved
+2025-07-10 21:58:47,510 [INFO] ✅ Chunk-021 (2021-11-21 00:00-23:59): 376 stations retrieved
+2025-07-10 21:58:49,791 [INFO] ✅ Chunk-019 (2021-11-19 00:00-23:59): 380 stations retrieved
+2025-07-10 21:58:51,455 [INFO] ✅ Chunk-027 (2021-11-27 00:00-23:59): 380 stations retrieved
+2025-07-10 21:59:00,322 [INFO] ✅ Chunk-029 (2021-11-29 00:00-23:59): 380 stations retrieved
+2025-07-10 21:59:02,419 [INFO] ✅ Chunk-016 (2021-11-16 00:00-23:59): 381 stations retrieved
+2025-07-10 22:02:34,096 [INFO] 📈 Progress: 10/30 (33.3%) | ✅ 10 | ❌ 0
+2025-07-10 22:07:12,846 [INFO] 📈 Progress: 20/30 (66.7%) | ✅ 20 | ❌ 0
+2025-07-10 22:11:57,919 [INFO] 📈 Progress: 30/30 (100.0%) | ✅ 30 | ❌ 0
+2025-07-10 22:12:00,111 [INFO] ✅ Month complete: 2,037,767 records
+2025-07-10 22:12:00,112 [INFO] 📊 Success rate: 100.0%
+2025-07-10 22:12:44,917 [INFO] 💾 Monthly data saved: simple_synoptic_data_2021-01-01_to_2021-12-31_2021-11.csv (2,037,767 records, 192.6 MB)
+2025-07-10 22:12:45,119 [INFO] 
+🗓️  Processing month 12/12: 2021-12
+2025-07-10 22:12:45,120 [INFO] 📅 Month range: 2021-12-01 to 2021-12-31
+2025-07-10 22:12:45,120 [INFO] ------------------------------------------------------------
+2025-07-10 22:12:45,120 [INFO] 🔢 Month chunks: 31
+2025-07-10 22:12:45,120 [INFO] 🧵 Parallel workers: 20
+2025-07-10 22:12:47,944 [INFO] ✅ Chunk-005 (2021-12-05 00:00-23:59): 379 stations retrieved
+2025-07-10 22:12:50,826 [INFO] ✅ Chunk-004 (2021-12-04 00:00-23:59): 380 stations retrieved
+2025-07-10 22:12:53,349 [INFO] ✅ Chunk-021 (2021-12-21 00:00-23:59): 381 stations retrieved
+2025-07-10 22:12:55,648 [INFO] ✅ Chunk-014 (2021-12-14 00:00-23:59): 380 stations retrieved
+2025-07-10 22:12:57,803 [INFO] ✅ Chunk-003 (2021-12-03 00:00-23:59): 378 stations retrieved
+2025-07-10 22:13:00,108 [INFO] ✅ Chunk-016 (2021-12-16 00:00-23:59): 379 stations retrieved
+2025-07-10 22:13:02,463 [INFO] ✅ Chunk-025 (2021-12-25 00:00-23:59): 376 stations retrieved
+2025-07-10 22:13:04,697 [INFO] ✅ Chunk-012 (2021-12-12 00:00-23:59): 380 stations retrieved
+2025-07-10 22:13:07,177 [INFO] ✅ Chunk-008 (2021-12-08 00:00-23:59): 383 stations retrieved
+2025-07-10 22:13:10,025 [INFO] ✅ Chunk-007 (2021-12-07 00:00-23:59): 383 stations retrieved
+2025-07-10 22:13:11,800 [INFO] ✅ Chunk-029 (2021-12-29 00:00-23:59): 378 stations retrieved
+2025-07-10 22:13:15,205 [INFO] ✅ Chunk-015 (2021-12-15 00:00-23:59): 379 stations retrieved
+2025-07-10 22:13:17,592 [INFO] ✅ Chunk-031 (2021-12-31 00:00-23:59): 374 stations retrieved
+2025-07-10 22:13:19,917 [INFO] ✅ Chunk-017 (2021-12-17 00:00-23:59): 378 stations retrieved
+2025-07-10 22:13:22,009 [INFO] ✅ Chunk-011 (2021-12-11 00:00-23:59): 381 stations retrieved
+2025-07-10 22:13:24,875 [INFO] ✅ Chunk-026 (2021-12-26 00:00-23:59): 375 stations retrieved
+2025-07-10 22:13:27,468 [INFO] ✅ Chunk-019 (2021-12-19 00:00-23:59): 375 stations retrieved
+2025-07-10 22:13:30,630 [INFO] ✅ Chunk-027 (2021-12-27 00:00-23:59): 379 stations retrieved
+2025-07-10 22:13:34,982 [INFO] ✅ Chunk-028 (2021-12-28 00:00-23:59): 379 stations retrieved
+2025-07-10 22:13:37,366 [INFO] ✅ Chunk-010 (2021-12-10 00:00-23:59): 383 stations retrieved
+2025-07-10 22:13:40,259 [INFO] ✅ Chunk-006 (2021-12-06 00:00-23:59): 382 stations retrieved
+2025-07-10 22:13:42,059 [INFO] ✅ Chunk-020 (2021-12-20 00:00-23:59): 376 stations retrieved
+2025-07-10 22:13:44,734 [INFO] ✅ Chunk-018 (2021-12-18 00:00-23:59): 378 stations retrieved
+2025-07-10 22:13:47,279 [INFO] ✅ Chunk-024 (2021-12-24 00:00-23:59): 378 stations retrieved
+2025-07-10 22:13:49,758 [INFO] ✅ Chunk-013 (2021-12-13 00:00-23:59): 383 stations retrieved
+2025-07-10 22:13:52,832 [INFO] ✅ Chunk-001 (2021-12-01 00:00-23:59): 378 stations retrieved
+2025-07-10 22:13:55,464 [INFO] ✅ Chunk-023 (2021-12-23 00:00-23:59): 380 stations retrieved
+2025-07-10 22:13:58,924 [INFO] ✅ Chunk-002 (2021-12-02 00:00-23:59): 379 stations retrieved
+2025-07-10 22:14:00,931 [INFO] ✅ Chunk-022 (2021-12-22 00:00-23:59): 382 stations retrieved
+2025-07-10 22:14:03,868 [INFO] ✅ Chunk-009 (2021-12-09 00:00-23:59): 382 stations retrieved
+2025-07-10 22:14:07,249 [INFO] ✅ Chunk-030 (2021-12-30 00:00-23:59): 375 stations retrieved
+2025-07-10 22:17:40,951 [INFO] 📈 Progress: 10/31 (32.3%) | ✅ 10 | ❌ 0
+2025-07-10 22:22:30,819 [INFO] 📈 Progress: 20/31 (64.5%) | ✅ 20 | ❌ 0
+2025-07-10 22:27:19,263 [INFO] 📈 Progress: 30/31 (96.8%) | ✅ 30 | ❌ 0
+2025-07-10 22:27:50,977 [INFO] ✅ Month complete: 2,138,527 records
+2025-07-10 22:27:50,977 [INFO] 📊 Success rate: 100.0%
+2025-07-10 22:28:39,785 [INFO] 💾 Monthly data saved: simple_synoptic_data_2021-01-01_to_2021-12-31_2021-12.csv (2,138,527 records, 202.0 MB)
+2025-07-10 22:28:40,017 [INFO] 
+================================================================================
+2025-07-10 22:28:40,017 [INFO] 🎉 SIMPLE MONTHLY DATA RETRIEVAL COMPLETE!
+2025-07-10 22:28:40,017 [INFO] ================================================================================
+2025-07-10 22:28:40,017 [INFO] 📁 Total files available: 12
+2025-07-10 22:28:40,017 [INFO] 💾 Files processed this run: 12
+2025-07-10 22:28:40,018 [INFO] ⏭️  Files skipped (already existed): 0
+2025-07-10 22:28:40,018 [INFO] 📊 New records processed: 24,293,856
+2025-07-10 22:28:40,018 [INFO] ⏱️  Processing time: 11075.38 seconds
+2025-07-10 22:28:40,018 [INFO] 📡 Total requests: 365
+2025-07-10 22:28:40,018 [INFO] ✅ Successful requests: 365
+2025-07-10 22:28:40,018 [INFO] ❌ Failed requests: 0
+2025-07-10 22:28:40,018 [INFO] 
+📂 All available files:
+2025-07-10 22:28:40,018 [INFO]   • simple_synoptic_data_2021-01-01_to_2021-12-31_2021-01.csv (184.9 MB) [NEW]
+2025-07-10 22:28:40,019 [INFO]   • simple_synoptic_data_2021-01-01_to_2021-12-31_2021-02.csv (176.8 MB) [NEW]
+2025-07-10 22:28:40,019 [INFO]   • simple_synoptic_data_2021-01-01_to_2021-12-31_2021-03.csv (195.4 MB) [NEW]
+2025-07-10 22:28:40,019 [INFO]   • simple_synoptic_data_2021-01-01_to_2021-12-31_2021-04.csv (189.5 MB) [NEW]
+2025-07-10 22:28:40,019 [INFO]   • simple_synoptic_data_2021-01-01_to_2021-12-31_2021-05.csv (195.0 MB) [NEW]
+2025-07-10 22:28:40,019 [INFO]   • simple_synoptic_data_2021-01-01_to_2021-12-31_2021-06.csv (189.3 MB) [NEW]
+2025-07-10 22:28:40,020 [INFO]   • simple_synoptic_data_2021-01-01_to_2021-12-31_2021-07.csv (195.4 MB) [NEW]
+2025-07-10 22:28:40,020 [INFO]   • simple_synoptic_data_2021-01-01_to_2021-12-31_2021-08.csv (195.7 MB) [NEW]
+2025-07-10 22:28:40,020 [INFO]   • simple_synoptic_data_2021-01-01_to_2021-12-31_2021-09.csv (185.6 MB) [NEW]
+2025-07-10 22:28:40,020 [INFO]   • simple_synoptic_data_2021-01-01_to_2021-12-31_2021-10.csv (197.1 MB) [NEW]
+2025-07-10 22:28:40,020 [INFO]   • simple_synoptic_data_2021-01-01_to_2021-12-31_2021-11.csv (192.6 MB) [NEW]
+2025-07-10 22:28:40,020 [INFO]   • simple_synoptic_data_2021-01-01_to_2021-12-31_2021-12.csv (202.0 MB) [NEW]
+2025-07-10 22:28:40,020 [INFO] 
+⏱️  Total execution time: 11075.38 seconds
+2025-07-10 22:28:40,020 [INFO] 📁 Total files available: 12
+2025-07-10 22:28:40,020 [INFO] 
+🎉 SIMPLE PROCESSING WITH RESUME COMPLETE!
+2025-07-10 22:28:40,020 [INFO] 🔚 Script execution ended at: 2025-07-10 22:28:40

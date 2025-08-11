@@ -1,0 +1,7 @@
+boto3
+botocore
+pygrib
+pandas
+numpy
+scipy
+tqdm

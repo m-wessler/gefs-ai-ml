@@ -1,2 +1,5 @@
 /csv
 /results_*
+*.csv
+*.json
+*.parquet
