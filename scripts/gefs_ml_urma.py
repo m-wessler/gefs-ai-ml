@@ -4,9 +4,13 @@
 GEFS ML Weather Forecasting Post-Processing Pipeline
 
 This script implements a machine learning approach to post-process weather forecasts,
-specifically focusing on maximum temperature predictions. It combines GEFS (Global Ensemble
+specifically focusing on temperature predictions (maximum or minimum). It combines GEFS (Global Ensemble
 Forecast System), NBM (National Blend of Models), and URMA (Unrestricted Mesoscale Analysis)
 data to train ML models that can improve forecast accuracy.
+
+Target Variable Configuration:
+- Set TARGET_VARIABLE = 'tmax' for maximum temperature predictions
+- Set TARGET_VARIABLE = 'tmin' for minimum temperature predictions
 
 Main workflow:
 1. Load and combine forecast, NBM, and URMA data
@@ -50,6 +54,56 @@ FORECAST_HOURS = ['f024']
 
 # Quality control threshold (maximum allowed deviation between URMA and station obs in °C)
 QC_THRESHOLD = 5.0
+
+# Target variable type - MODIFY THIS TO CHANGE TARGET VARIABLE
+# Options: 'tmax' for maximum temperature, 'tmin' for minimum temperature
+TARGET_VARIABLE = 'tmax'
+
+# =============================================================================
+# TARGET VARIABLE CONFIGURATION FUNCTIONS
+# =============================================================================
+
+def get_target_config(target_type=None):
+    """
+    Get configuration for target variable based on type (tmax or tmin).
+    
+    Parameters:
+    -----------
+    target_type : str or None
+        Target variable type ('tmax' or 'tmin'). If None, uses TARGET_VARIABLE.
+        
+    Returns:
+    --------
+    dict: Configuration with column names and URMA field mapping
+    """
+    if target_type is None:
+        target_type = TARGET_VARIABLE
+    if target_type.lower() in ['tmax', 'maxt']:
+        return {
+            'target_type': 'tmax',
+            'forecast_col': 'tmax_2m',
+            'obs_col': 'tmax_obs', 
+            'gefs_obs_col': 'gefs_tmax_obs',
+            'nbm_col': 'nbm_tmax_2m',
+            'nbm_obs_col': 'nbm_tmax_obs',
+            'urma_obs_col': 'urma_tmax_obs',
+            'urma_field': 'Maximum temperature_2_heightAboveGround',
+            'description': 'maximum temperature'
+        }
+    elif target_type.lower() in ['tmin', 'mint']:
+        return {
+            'target_type': 'tmin',
+            'forecast_col': 'tmin_2m',
+            'obs_col': 'tmin_obs',
+            'gefs_obs_col': 'gefs_tmin_obs', 
+            'nbm_col': 'nbm_tmin_2m',
+            'nbm_obs_col': 'nbm_tmin_obs',
+            'urma_obs_col': 'urma_tmin_obs',
+            'urma_field': 'Minimum temperature_2_heightAboveGround',
+            'description': 'minimum temperature'
+        }
+    else:
+        raise ValueError(f"Target type '{target_type}' not supported. Use 'tmax' or 'tmin'.")
 
 # =============================================================================
 # DATA LOADING AND PREPROCESSING FUNCTIONS
@@ -250,7 +304,7 @@ def create_time_matched_dataset(forecast_subset, nbm_subset, urma_subset):
         print("Warning: No time-matched data created")
         return pd.DataFrame()
 
-def apply_qc_filter(df, urma_obs_threshold=QC_THRESHOLD, obs_col='gefs_tmax_obs', urma_col='urma_tmax_obs'):
+def apply_qc_filter(df, urma_obs_threshold=QC_THRESHOLD, target_config=None):
     """
     Apply quality control filter based on deviation between URMA and station observations.
     
@@ -263,16 +317,19 @@ def apply_qc_filter(df, urma_obs_threshold=QC_THRESHOLD, obs_col='gefs_tmax_obs'
         Input dataframe with temperature data
     urma_obs_threshold : float
         Maximum allowed deviation between URMA and observations (default from config)
-    obs_col : str
-        Column name for station observations
-    urma_col : str
-        Column name for URMA analysis
+    target_config : dict or None
+        Target configuration dict from get_target_config(). If None, uses current TARGET_VARIABLE.
 
     Returns:
     --------
     pd.DataFrame : QC filtered dataframe
     dict : QC statistics and diagnostics
     """
+    if target_config is None:
+        target_config = get_target_config()
+        
+    obs_col = target_config['gefs_obs_col']
+    urma_col = target_config['urma_obs_col']
     df_work = df.copy()
     df_work['urma_obs_deviation'] = abs(df_work[urma_col] - df_work[obs_col])
 
@@ -366,7 +423,7 @@ def identify_and_drop_non_predictive_columns(df):
 
     return cleaned_df, drop_info
 
-def combine_features_and_targets(feature_data, target_data, target_cols=None):
+def combine_features_and_targets(feature_data, target_data, target_config=None):
     """
     Combine feature data and target data along matching indices for ML training.
     
@@ -379,26 +436,29 @@ def combine_features_and_targets(feature_data, target_data, target_cols=None):
         Features with MultiIndex [valid_datetime, sid]
     target_data : pd.DataFrame
         Target data with MultiIndex [valid_datetime, sid]
-    target_cols : str, list, or None
-        Target column(s) to extract
+    target_config : dict or None
+        Target configuration dict from get_target_config(). If None, uses current TARGET_VARIABLE.
 
     Returns:
     --------
     pd.DataFrame : Combined dataset ready for ML
     dict : Merge statistics and information
     """
+    if target_config is None:
+        target_config = get_target_config()
+        
+    target_cols = [target_config['urma_obs_col']]
     print("=== COMBINING FEATURES AND TARGETS ===")
     print(f"Feature data shape: {feature_data.shape}")
     print(f"Target data shape: {target_data.shape}")
 
     # Handle target column specification
-    if target_cols is None:
-        target_cols = ['urma_tmax_obs']
-    elif isinstance(target_cols, str):
+    if isinstance(target_cols, str):
         target_cols = [target_cols]
 
     # Validate target columns exist
-    available_targets = [col for col in target_data.columns if any(keyword in col.lower() for keyword in ['tmax', 'temp', 'target'])]
+    target_keywords = [target_config['target_type'], 'temp', 'target']
+    available_targets = [col for col in target_data.columns if any(keyword in col.lower() for keyword in target_keywords)]
     missing_targets = [col for col in target_cols if col not in target_data.columns]
 
     if missing_targets:
@@ -451,9 +511,7 @@ def combine_features_and_targets(feature_data, target_data, target_cols=None):
 
     return combined_data, merge_stats
 
-def prepare_postprocessing_data(ml_dataset, target_col='tmax_obs',
-                               raw_forecast_col=None,
-                               nbm_forecast_col=None):
+def prepare_postprocessing_data(ml_dataset, target_config=None):
     """
     Prepare data for post-processing approach by separating features, forecasts, and targets.
     
@@ -464,17 +522,19 @@ def prepare_postprocessing_data(ml_dataset, target_col='tmax_obs',
     -----------
     ml_dataset : pd.DataFrame
         Combined dataset with features and targets
-    target_col : str
-        Target variable column name
-    raw_forecast_col : str or None
-        Raw model forecast column name (e.g., GEFS)
-    nbm_forecast_col : str or None
-        Post-processed forecast column name (e.g., NBM)
+    target_config : dict or None
+        Target configuration dict from get_target_config(). If None, uses current TARGET_VARIABLE.
 
     Returns:
     --------
     dict: Contains separated datasets and baseline performance metrics
     """
+    if target_config is None:
+        target_config = get_target_config()
+        
+    target_col = target_config['obs_col']
+    raw_forecast_col = target_config['forecast_col']
+    nbm_forecast_col = target_config['nbm_col']
     df = ml_dataset.copy()
     df = df.dropna(subset=[target_col])  # Remove rows with missing targets
 
@@ -709,7 +769,7 @@ def tune_hyperparameters(X_train, y_train, X_val, y_val):
 
     return best_models, scaler
 
-def train_postprocessing_models_with_tuning(splits, data_dict):
+def train_postprocessing_models_with_tuning(splits, data_dict, target_config=None):
     """
     Train tuned post-processing models and evaluate their performance.
     
@@ -722,11 +782,18 @@ def train_postprocessing_models_with_tuning(splits, data_dict):
         Train/validation/test splits from create_time_based_splits
     data_dict : dict
         Data dictionary from prepare_postprocessing_data
+    target_config : dict or None
+        Target configuration dict from get_target_config(). If None, uses current TARGET_VARIABLE.
 
     Returns:
     --------
     dict: Complete results including trained models, performance metrics, and data
     """
+    if target_config is None:
+        target_config = get_target_config()
+        
+    raw_forecast_col = target_config['forecast_col']
+    nbm_forecast_col = target_config['nbm_col']
     # Prepare clean training and validation data
     X_train, X_val = splits['X_train'], splits['X_val']
     y_train, y_val = splits['y_train'], splits['y_val']
@@ -769,15 +836,15 @@ def train_postprocessing_models_with_tuning(splits, data_dict):
     forecast_cols = data_dict['forecast_cols']
 
     # Evaluate NBM model if available
-    if 'nbm_tmax_2m' in forecast_cols and 'nbm_tmax_2m' in X_val_clean.columns:
+    if nbm_forecast_col in forecast_cols and nbm_forecast_col in X_val_clean.columns:
         results['NBM Model'] = evaluate_model_performance(
-            y_val_clean, X_val_clean['nbm_tmax_2m'], 'NBM Model'
+            y_val_clean, X_val_clean[nbm_forecast_col], 'NBM Model'
         )
 
     # Evaluate Raw model if available
-    if 'tmax_2m' in forecast_cols and 'tmax_2m' in X_val_clean.columns:
+    if raw_forecast_col in forecast_cols and raw_forecast_col in X_val_clean.columns:
         results['Raw Model'] = evaluate_model_performance(
-            y_val_clean, X_val_clean['tmax_2m'], 'Raw Model'
+            y_val_clean, X_val_clean[raw_forecast_col], 'Raw Model'
         )
 
     # Note if no forecast columns are available (pure ML approach)
@@ -961,24 +1028,31 @@ def main():
     """
     Main execution function that orchestrates the complete ML pipeline.
     """
+    # Get target configuration
+    target_config = get_target_config()
+    
     print("=== GEFS ML POST-PROCESSING PIPELINE ===")
     print(f"Base path: {BASE_PATH}")
     print(f"Stations: {STATION_IDS}")
     print(f"Forecast hours: {FORECAST_HOURS}")
     print(f"QC threshold: {QC_THRESHOLD}°C")
+    print(f"Target variable: {target_config['description']} ({target_config['target_type']})")
     
     # Step 1: Load and combine data
     print("\n=== STEP 1: LOADING DATA ===")
     forecast, nbm, urma = load_combined_data()
 
     # Step 2: Prepare data subsets with proper column naming
-    forecast_subset = forecast[['tmax_2m', 'tmax_obs']].dropna().sort_index()
-    nbm_subset = nbm[['tmax_2m', 'tmax_obs']].dropna().sort_index()
-    urma_subset = urma[['Maximum temperature_2_heightAboveGround']].dropna()
+    forecast_cols = [target_config['forecast_col'], target_config['obs_col']]
+    nbm_cols = [target_config['forecast_col'], target_config['obs_col']]
+    
+    forecast_subset = forecast[forecast_cols].dropna().sort_index()
+    nbm_subset = nbm[nbm_cols].dropna().sort_index()
+    urma_subset = urma[[target_config['urma_field']]].dropna()
 
     # Standardize URMA column names and index
     urma_subset = urma_subset.reset_index().rename(
-        columns={'Maximum temperature_2_heightAboveGround': 'tmax_obs',
+        columns={target_config['urma_field']: target_config['obs_col'],
                  'valid_time': 'valid_datetime', 'station_id': 'sid'}
     ).set_index(['valid_datetime', 'sid']).sort_index()
 
@@ -988,7 +1062,7 @@ def main():
     urma_subset.columns = ['urma_' + col for col in urma_subset.columns]
 
     # Convert URMA temperature from Kelvin to Celsius
-    urma_subset['urma_tmax_obs'] -= 273.15
+    urma_subset[target_config['urma_obs_col']] -= 273.15
 
     # Step 3: Create time-matched dataset
     print("\n=== STEP 2: CREATING TIME-MATCHED DATASET ===")
@@ -997,7 +1071,7 @@ def main():
 
     # Step 4: Apply quality control
     print("\n=== STEP 3: APPLYING QUALITY CONTROL ===")
-    time_matched_qc, qc_stats = apply_qc_filter(time_matched_df, urma_obs_threshold=QC_THRESHOLD)
+    time_matched_qc, qc_stats = apply_qc_filter(time_matched_df, target_config=target_config)
     
     print(f"QC Results:")
     print(f"- Threshold: {qc_stats['threshold_used']}°C")
@@ -1009,40 +1083,48 @@ def main():
     print("\n=== STEP 4: PREPARING ML DATASET ===")
     
     # Create target dataset from QC'd data
-    target_data = time_matched_qc[~np.isnan(time_matched_qc['nbm_tmax_2m'])].reset_index(
+    target_data = time_matched_qc[~np.isnan(time_matched_qc[target_config['nbm_col']])].reset_index(
     ).set_index(['valid_datetime', 'sid']).sort_index()
     
-    target_data.drop(columns=['nbm_tmax_obs'], inplace=True)
-    target_data.rename(columns={'gefs_tmax_obs': 'tmax_obs'}, inplace=True)
+    target_data.drop(columns=[target_config['nbm_obs_col']], inplace=True)
+    target_data.rename(columns={target_config['gefs_obs_col']: target_config['obs_col']}, inplace=True)
 
     # Clean feature data
     feature_data, drop_info = identify_and_drop_non_predictive_columns(
-        forecast[~np.isnan(forecast['tmax_obs'])].sort_index())
+        forecast[~np.isnan(forecast[target_config['obs_col']])].sort_index())
     
     print(f"Feature cleaning results:")
     print(f"- Original shape: {drop_info['original_shape']}")
     print(f"- Cleaned shape: {drop_info['cleaned_shape']}")
     print(f"- Dropped {len(drop_info['dropped_columns'])} columns")
 
-    # Combine features and targets
-    ml_dataset, merge_stats = combine_features_and_targets(
-        feature_data, target_data, target_cols=['tmax_obs', 'nbm_tmax_2m']
-    )
+    # Combine features and targets - need to provide both target columns
+    target_data_with_both = target_data.copy()
+    if target_config['nbm_col'] in target_data.columns:
+        # Both columns are already present, we can use them directly
+        ml_dataset, merge_stats = combine_features_and_targets(
+            feature_data, target_data_with_both, target_config=target_config
+        )
+        # Manually add the NBM column since combine_features_and_targets only handles one target
+        common_indices = feature_data.index.intersection(target_data.index)
+        if target_config['nbm_col'] in target_data.columns:
+            ml_dataset[target_config['nbm_col']] = target_data.loc[common_indices, target_config['nbm_col']]
+    else:
+        ml_dataset, merge_stats = combine_features_and_targets(
+            feature_data, target_data_with_both, target_config=target_config
+        )
 
-    # Remove unnecessary columns
-    if 'tmin_2m' in ml_dataset.columns:
-        ml_dataset.drop(columns=['tmin_2m'], inplace=True)
+    # Remove unnecessary columns - drop the opposite temperature type
+    opposite_type = 'tmin_2m' if target_config['target_type'] == 'tmax' else 'tmax_2m'
+    if opposite_type in ml_dataset.columns:
+        ml_dataset.drop(columns=[opposite_type], inplace=True)
 
     print(f"Final ML dataset shape: {ml_dataset.shape}")
     print(f"Final columns: {len(ml_dataset.columns)}")
 
     # Step 6: Prepare data for post-processing
     print("\n=== STEP 5: PREPARING POST-PROCESSING DATA ===")
-    data_dict = prepare_postprocessing_data(
-        ml_dataset, 
-        raw_forecast_col='tmax_2m', 
-        nbm_forecast_col='nbm_tmax_2m'
-    )
+    data_dict = prepare_postprocessing_data(ml_dataset, target_config=target_config)
 
     # Step 7: Create time-based splits
     print("\n=== STEP 6: CREATING TIME-BASED SPLITS ===")
@@ -1050,7 +1132,7 @@ def main():
 
     # Step 8: Train and evaluate models
     print("\n=== STEP 7: TRAINING AND EVALUATING MODELS ===")
-    model_results = train_postprocessing_models_with_tuning(splits, data_dict)
+    model_results = train_postprocessing_models_with_tuning(splits, data_dict, target_config=target_config)
 
     # Step 9: Analyze results
     print("\n=== STEP 8: ANALYZING RESULTS ===")
