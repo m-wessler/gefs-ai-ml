@@ -16,7 +16,7 @@ Main workflow:
 1. Load and combine forecast, NBM, and URMA data
 2. Create time-matched datasets with quality control
 3. Prepare data for ML training
-4. Train and evaluate Random Forest and Neural Network models
+4. Train and evaluate Random Forest model
 5. Compare performance against baseline NBM forecasts
 
 Author: Generated from Jupyter notebook
@@ -33,9 +33,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.model_selection import train_test_split, TimeSeriesSplit, GridSearchCV
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.neural_network import MLPRegressor
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-from sklearn.preprocessing import StandardScaler
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -58,6 +56,11 @@ QC_THRESHOLD = 5.0
 # Target variable type - MODIFY THIS TO CHANGE TARGET VARIABLE
 # Options: 'tmax' for maximum temperature, 'tmin' for minimum temperature
 TARGET_VARIABLE = 'tmax'
+
+# Post-processing mode toggle - MODIFY THIS TO CHANGE APPROACH
+# True: Use NBM forecasts as predictors (post-processing approach)
+# False: Exclude NBM forecasts, use only meteorological features (independent forecasting)
+POSTPROCESS_NBM = False
 
 # =============================================================================
 # TARGET VARIABLE CONFIGURATION FUNCTIONS
@@ -176,7 +179,7 @@ def load_combined_data(
     # Load URMA data (already processed and in parquet format)
     urma_path = Path(base_path) / 'urma' / 'WR_2020_2025.urma.parquet'
     print(f"Loading URMA data from: {urma_path}")
-    urma_df = pd.read_parquet(urma_path)
+    urma_df = pd.read_parquet(urma_path, engine='pyarrow')
 
     # Filter URMA for our selected stations only
     urma_df = urma_df.loc[urma_df.index.get_level_values(1).isin(station_ids)]
@@ -447,7 +450,8 @@ def combine_features_and_targets(feature_data, target_data, target_config=None):
     if target_config is None:
         target_config = get_target_config()
         
-    target_cols = [target_config['urma_obs_col']]
+    # Use the GEFS observations as the primary target, URMA for reference
+    target_cols = [target_config['gefs_obs_col']]  # gefs_tmax_obs
     print("=== COMBINING FEATURES AND TARGETS ===")
     print(f"Feature data shape: {feature_data.shape}")
     print(f"Target data shape: {target_data.shape}")
@@ -513,10 +517,11 @@ def combine_features_and_targets(feature_data, target_data, target_config=None):
 
 def prepare_postprocessing_data(ml_dataset, target_config=None):
     """
-    Prepare data for post-processing approach by separating features, forecasts, and targets.
+    Prepare data for ML training by separating features, forecasts, and targets.
     
-    Post-processing uses existing forecast models as a starting point and applies ML
-    to improve their predictions using additional meteorological features.
+    Depending on POSTPROCESS_NBM setting:
+    - True: Use NBM forecasts as predictors (post-processing approach) 
+    - False: Exclude NBM forecasts, use only meteorological features (independent forecasting)
 
     Parameters:
     -----------
@@ -532,9 +537,11 @@ def prepare_postprocessing_data(ml_dataset, target_config=None):
     if target_config is None:
         target_config = get_target_config()
         
-    target_col = target_config['obs_col']
-    raw_forecast_col = target_config['forecast_col']
-    nbm_forecast_col = target_config['nbm_col']
+    # Use the actual column names that exist in the dataset (with prefixes)
+    target_col = target_config['gefs_obs_col']  # gefs_tmax_obs (the actual target)
+    raw_forecast_col = 'gefs_' + target_config['forecast_col']  # gefs_tmax_2m
+    nbm_forecast_col = 'nbm_' + target_config['forecast_col']  # nbm_tmax_2m
+    
     df = ml_dataset.copy()
     df = df.dropna(subset=[target_col])  # Remove rows with missing targets
 
@@ -542,7 +549,9 @@ def prepare_postprocessing_data(ml_dataset, target_config=None):
     baseline_metrics = {}
     forecast_cols = []
 
-    # Evaluate NBM forecast if available
+    print(f"ML Mode: {'Post-processing NBM' if POSTPROCESS_NBM else 'Independent forecasting (no NBM)'}")
+
+    # Always evaluate NBM forecast for baseline comparison if available
     if nbm_forecast_col is not None and nbm_forecast_col in df.columns:
         df['nbm_bias'] = df[target_col] - df[nbm_forecast_col]
         df['nbm_abs_error'] = np.abs(df['nbm_bias'])
@@ -551,10 +560,16 @@ def prepare_postprocessing_data(ml_dataset, target_config=None):
         nbm_rmse = np.sqrt((df['nbm_bias']**2).mean())
         baseline_metrics['nbm_mae'] = nbm_mae
         baseline_metrics['nbm_rmse'] = nbm_rmse
-        forecast_cols.append(nbm_forecast_col)
+        
+        # Only include NBM as a feature if post-processing is enabled
+        if POSTPROCESS_NBM:
+            forecast_cols.append(nbm_forecast_col)
 
         print("Baseline Performance:")
         print(f"NBM Model - MAE: {nbm_mae:.3f}°C, RMSE: {nbm_rmse:.3f}°C")
+        baseline_printed = True
+    else:
+        baseline_printed = False
 
     # Evaluate raw forecast if available
     if raw_forecast_col is not None and raw_forecast_col in df.columns:
@@ -567,7 +582,7 @@ def prepare_postprocessing_data(ml_dataset, target_config=None):
         baseline_metrics['raw_rmse'] = raw_rmse
         forecast_cols.append(raw_forecast_col)
 
-        if nbm_forecast_col is None:  # Only print if NBM wasn't already shown
+        if not baseline_printed:  # Only print header if NBM wasn't already shown
             print("Baseline Performance:")
         print(f"Raw Model - MAE: {raw_mae:.3f}°C, RMSE: {raw_rmse:.3f}°C")
 
@@ -576,10 +591,16 @@ def prepare_postprocessing_data(ml_dataset, target_config=None):
         'nbm_bias', 'nbm_abs_error', 'raw_bias', 'raw_abs_error'
     ]
     
+    # If not post-processing, also exclude NBM forecast columns from features
+    # but keep them in the dataset for baseline evaluation
+    if not POSTPROCESS_NBM:
+        nbm_cols_in_data = [col for col in df.columns if 'nbm_' in col and col not in exclude_cols]
+        exclude_cols.extend(nbm_cols_in_data)
+    
     feature_cols = [col for col in df.columns if col not in exclude_cols]
     X_features = df[feature_cols].copy()
 
-    # Create forecast features matrix
+    # Create forecast features matrix (only includes forecast columns used as features)
     if forecast_cols:
         X_forecasts = df[forecast_cols].copy()
         X_combined = pd.concat([X_forecasts, X_features], axis=1)
@@ -594,7 +615,7 @@ def prepare_postprocessing_data(ml_dataset, target_config=None):
         'X_features': X_features,
         'X_forecasts': X_forecasts,
         'y': y,
-        'df_full': df,
+        'df_full': df,  # This contains all columns including NBM for evaluation
         'feature_cols': feature_cols,
         'forecast_cols': forecast_cols,
         'baseline_metrics': baseline_metrics
@@ -698,20 +719,19 @@ def evaluate_model_performance(y_true, y_pred, model_name="Model"):
 
 def tune_hyperparameters(X_train, y_train, X_val, y_val):
     """
-    Perform hyperparameter tuning for Random Forest and Neural Network models.
+    Perform hyperparameter tuning for Random Forest model.
     
-    Uses grid search with cross-validation to find optimal hyperparameters
-    for both model types.
+    Uses grid search with cross-validation to find optimal hyperparameters.
 
     Parameters:
     -----------
     X_train, y_train : Training data
-    X_val, y_val : Validation data (for Neural Network scaling)
+    X_val, y_val : Validation data (unused, kept for compatibility)
 
     Returns:
     --------
-    dict: Best models for each algorithm
-    StandardScaler: Fitted scaler for Neural Network
+    dict: Best model
+    None: Placeholder for scaler (no longer needed)
     """
     print("Starting hyperparameter tuning...")
 
@@ -721,13 +741,6 @@ def tune_hyperparameters(X_train, y_train, X_val, y_val):
         'max_depth': [10, 15, 20, None],
         'min_samples_split': [2, 5, 10],
         'min_samples_leaf': [1, 2, 4]
-    }
-
-    # Neural Network parameter grid
-    nn_param_grid = {
-        'hidden_layer_sizes': [(50,), (100,), (100, 50), (150, 75), (200, 100, 50)],
-        'learning_rate_init': [0.001, 0.01, 0.1],
-        'alpha': [0.0001, 0.001, 0.01]  # L2 regularization
     }
 
     best_models = {}
@@ -746,28 +759,7 @@ def tune_hyperparameters(X_train, y_train, X_val, y_val):
     print(f"Best RF params: {rf_grid.best_params_}")
     print(f"Best RF CV score: {-rf_grid.best_score_:.3f}")
 
-    # Tune Neural Network (requires feature scaling)
-    print("\nTuning Neural Network...")
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_val_scaled = scaler.transform(X_val)
-
-    nn_base = MLPRegressor(
-        max_iter=500, random_state=42,
-        early_stopping=True, validation_fraction=0.1
-    )
-    nn_grid = GridSearchCV(
-        nn_base, nn_param_grid,
-        cv=3, scoring='neg_mean_absolute_error',
-        n_jobs=-1, verbose=1
-    )
-    nn_grid.fit(X_train_scaled, y_train)
-
-    best_models['Neural Network'] = nn_grid.best_estimator_
-    print(f"Best NN params: {nn_grid.best_params_}")
-    print(f"Best NN CV score: {-nn_grid.best_score_:.3f}")
-
-    return best_models, scaler
+    return best_models, None
 
 def train_postprocessing_models_with_tuning(splits, data_dict, target_config=None):
     """
@@ -792,8 +784,9 @@ def train_postprocessing_models_with_tuning(splits, data_dict, target_config=Non
     if target_config is None:
         target_config = get_target_config()
         
-    raw_forecast_col = target_config['forecast_col']
-    nbm_forecast_col = target_config['nbm_col']
+    # Use the actual column names that exist in the dataset (with prefixes)
+    raw_forecast_col = 'gefs_' + target_config['forecast_col']  # gefs_tmax_2m
+    nbm_forecast_col = 'nbm_' + target_config['forecast_col']  # nbm_tmax_2m
     # Prepare clean training and validation data
     X_train, X_val = splits['X_train'], splits['X_val']
     y_train, y_val = splits['y_train'], splits['y_val']
@@ -811,7 +804,7 @@ def train_postprocessing_models_with_tuning(splits, data_dict, target_config=Non
     print(f"Clean validation samples: {len(y_val_clean)}")
 
     # Perform hyperparameter tuning
-    best_models, scaler = tune_hyperparameters(X_train_clean, y_train_clean, X_val_clean, y_val_clean)
+    best_models, _ = tune_hyperparameters(X_train_clean, y_train_clean, X_val_clean, y_val_clean)
 
     # Train final models and evaluate on validation set
     results = {}
@@ -825,21 +818,24 @@ def train_postprocessing_models_with_tuning(splits, data_dict, target_config=Non
     results['Random Forest'] = evaluate_model_performance(y_val_clean, rf_val_pred, 'Random Forest')
     trained_models['Random Forest'] = rf_model
 
-    # Neural Network evaluation
-    nn_model = best_models['Neural Network']
-    X_val_scaled = scaler.transform(X_val_clean)
-    nn_val_pred = nn_model.predict(X_val_scaled)
-    results['Neural Network'] = evaluate_model_performance(y_val_clean, nn_val_pred, 'Neural Network')
-    trained_models['Neural Network'] = nn_model
-
     # Add baseline performance from existing forecast models
     forecast_cols = data_dict['forecast_cols']
 
-    # Evaluate NBM model if available
-    if nbm_forecast_col in forecast_cols and nbm_forecast_col in X_val_clean.columns:
-        results['NBM Model'] = evaluate_model_performance(
-            y_val_clean, X_val_clean[nbm_forecast_col], 'NBM Model'
-        )
+    # Always evaluate NBM model for baseline comparison if available
+    # (regardless of whether it's used as a feature in post-processing)
+    # Access from the full dataframe which contains all columns
+    df_full = data_dict['df_full']
+    if nbm_forecast_col in df_full.columns:
+        # Get NBM predictions for the validation indices
+        val_indices = y_val_clean.index
+        nbm_val_predictions = df_full.loc[val_indices, nbm_forecast_col]
+        
+        # Remove any NaN pairs
+        valid_mask = ~(np.isnan(nbm_val_predictions) | np.isnan(y_val_clean))
+        if valid_mask.sum() > 0:
+            results['NBM Model'] = evaluate_model_performance(
+                y_val_clean[valid_mask], nbm_val_predictions[valid_mask], 'NBM Model'
+            )
 
     # Evaluate Raw model if available
     if raw_forecast_col in forecast_cols and raw_forecast_col in X_val_clean.columns:
@@ -854,7 +850,7 @@ def train_postprocessing_models_with_tuning(splits, data_dict, target_config=Non
     return {
         'results': results,
         'models': trained_models,
-        'scaler': scaler,
+        'scaler': None,  # No longer needed
         'X_train_clean': X_train_clean,
         'y_train_clean': y_train_clean,
         'X_val_clean': X_val_clean,
@@ -894,6 +890,10 @@ def analyze_feature_importance(model_results, data_dict):
         'importance': importances
     }).sort_values('importance', ascending=False)
 
+    # Create plots directory if it doesn't exist
+    plots_dir = Path('./plots')
+    plots_dir.mkdir(exist_ok=True)
+
     # Create feature importance visualization
     plt.figure(figsize=(12, 8))
     top_features = feature_importance_df.head(20)  # Show top 20 features
@@ -904,6 +904,9 @@ def analyze_feature_importance(model_results, data_dict):
     plt.title('Random Forest Feature Importance (Top 20)')
     plt.gca().invert_yaxis()
     plt.tight_layout()
+    
+    # Save the plot
+    plt.savefig(plots_dir / 'feature_importance.png', dpi=300, bbox_inches='tight')
     plt.show()
 
     # Print top features for analysis
@@ -913,6 +916,141 @@ def analyze_feature_importance(model_results, data_dict):
         print(f"{row['feature']:<25} {row['importance']:.4f}")
 
     return feature_importance_df
+
+def plot_forecast_vs_observed_comparison(model_results, data_dict):
+    """
+    Create side-by-side scatter plots comparing NBM and Random Forest forecasts against observations.
+    
+    Parameters:
+    -----------
+    model_results : dict
+        Results from model training
+    data_dict : dict
+        Data dictionary with forecast information
+    """
+    results = model_results['results']
+    
+    # Create plots directory if it doesn't exist
+    plots_dir = Path('./plots')
+    plots_dir.mkdir(exist_ok=True)
+    
+    # Get validation data
+    X_val_clean = model_results['X_val_clean']
+    y_val_clean = model_results['y_val_clean']
+    
+    # Generate Random Forest predictions
+    rf_predictions = model_results['models']['Random Forest'].predict(X_val_clean)
+    
+    # Get NBM predictions (always check full dataframe, not just features)
+    nbm_col = None
+    df_full = data_dict['df_full']
+    
+    # Look for NBM column in the full dataframe
+    for col in df_full.columns:
+        if 'nbm_' in col and ('tmax_2m' in col or 'tmin_2m' in col):
+            nbm_col = col
+            break
+    
+    # Create the comparison plot
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
+    
+    # Common plot settings
+    point_size = 15  # Larger points for visibility
+    alpha = 0.7
+    
+    # Left subplot: NBM vs Observed
+    if nbm_col and nbm_col in df_full.columns:
+        # Get NBM predictions from the full dataframe for validation indices
+        val_indices = y_val_clean.index
+        nbm_predictions = df_full.loc[val_indices, nbm_col]
+        
+        # Remove any NaN pairs
+        valid_mask = ~(np.isnan(nbm_predictions) | np.isnan(y_val_clean))
+        nbm_clean = nbm_predictions[valid_mask]
+        y_nbm_clean = y_val_clean[valid_mask]
+        
+        ax1.scatter(y_nbm_clean, nbm_clean, s=point_size, alpha=alpha, color='lightblue', edgecolors='blue', linewidth=0.5)
+        
+        # Perfect prediction line
+        min_val = min(y_nbm_clean.min(), nbm_clean.min())
+        max_val = max(y_nbm_clean.max(), nbm_clean.max())
+        ax1.plot([min_val, max_val], [min_val, max_val], 'r--', lw=2, label='Perfect Prediction')
+        
+        # Calculate metrics
+        nbm_r2 = results['NBM Model']['r2'] if 'NBM Model' in results else r2_score(y_nbm_clean, nbm_clean)
+        nbm_mae = results['NBM Model']['mae'] if 'NBM Model' in results else mean_absolute_error(y_nbm_clean, nbm_clean)
+        nbm_rmse = results['NBM Model']['rmse'] if 'NBM Model' in results else np.sqrt(mean_squared_error(y_nbm_clean, nbm_clean))
+        nbm_count = len(y_nbm_clean)
+        
+        # Add metrics text
+        metrics_text = f'R² = {nbm_r2:.3f}\nMAE = {nbm_mae:.3f}°C\nRMSE = {nbm_rmse:.3f}°C\nN = {nbm_count:,}'
+        ax1.text(0.05, 0.95, metrics_text, transform=ax1.transAxes, fontsize=11,
+                verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+        
+        ax1.set_xlabel('Observed Temperature (°C)')
+        ax1.set_ylabel('NBM Forecast (°C)')
+        ax1.set_title('NBM Model vs Observed')
+        ax1.grid(True, alpha=0.3)
+        ax1.legend()
+    else:
+        ax1.text(0.5, 0.5, 'NBM data not available', transform=ax1.transAxes, 
+                ha='center', va='center', fontsize=14)
+        ax1.set_title('NBM Model vs Observed (No Data)')
+    
+    # Right subplot: Random Forest vs Observed
+    # Remove any NaN pairs
+    valid_mask = ~(np.isnan(rf_predictions) | np.isnan(y_val_clean))
+    rf_clean = rf_predictions[valid_mask]
+    y_rf_clean = y_val_clean[valid_mask]
+    
+    ax2.scatter(y_rf_clean, rf_clean, s=point_size, alpha=alpha, color='lightgreen', edgecolors='darkgreen', linewidth=0.5)
+    
+    # Perfect prediction line
+    min_val = min(y_rf_clean.min(), rf_clean.min())
+    max_val = max(y_rf_clean.max(), rf_clean.max())
+    ax2.plot([min_val, max_val], [min_val, max_val], 'r--', lw=2, label='Perfect Prediction')
+    
+    # Calculate metrics
+    rf_r2 = results['Random Forest']['r2']
+    rf_mae = results['Random Forest']['mae']
+    rf_rmse = results['Random Forest']['rmse']
+    rf_count = len(y_rf_clean)
+    
+    # Add metrics text
+    metrics_text = f'R² = {rf_r2:.3f}\nMAE = {rf_mae:.3f}°C\nRMSE = {rf_rmse:.3f}°C\nN = {rf_count:,}'
+    ax2.text(0.05, 0.95, metrics_text, transform=ax2.transAxes, fontsize=11,
+            verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+    
+    ax2.set_xlabel('Observed Temperature (°C)')
+    ax2.set_ylabel('Random Forest Forecast (°C)')
+    ax2.set_title('Random Forest vs Observed')
+    ax2.grid(True, alpha=0.3)
+    ax2.legend()
+    
+    # Make axes equal and aligned
+    if nbm_col and nbm_col in df_full.columns:
+        # Get global min/max for consistent scaling
+        all_obs = np.concatenate([y_nbm_clean, y_rf_clean])
+        all_pred = np.concatenate([nbm_clean, rf_clean])
+        global_min = min(all_obs.min(), all_pred.min())
+        global_max = max(all_obs.max(), all_pred.max())
+        
+        ax1.set_xlim(global_min, global_max)
+        ax1.set_ylim(global_min, global_max)
+        ax2.set_xlim(global_min, global_max)
+        ax2.set_ylim(global_min, global_max)
+        ax1.set_aspect('equal')
+        ax2.set_aspect('equal')
+    else:
+        ax2.set_xlim(y_rf_clean.min(), y_rf_clean.max())
+        ax2.set_ylim(rf_clean.min(), rf_clean.max())
+        ax2.set_aspect('equal')
+    
+    plt.tight_layout()
+    
+    # Save the plot
+    plt.savefig(plots_dir / 'forecast_vs_observed_comparison.png', dpi=300, bbox_inches='tight')
+    plt.show()
 
 def plot_model_comparison_enhanced(model_results, data_dict):
     """
@@ -935,16 +1073,20 @@ def plot_model_comparison_enhanced(model_results, data_dict):
     print("=" * 60)
     print(f"{'Model':<15} {'MAE':<8} {'RMSE':<8} {'R²':<8} {'Bias':<8}")
     print("-" * 60)
-    for model_name in ['NBM Model', 'Random Forest', 'Neural Network']:
+    for model_name in ['NBM Model', 'Random Forest']:
         if model_name in results:
             r = results[model_name]
             print(f"{model_name:<15} {r['mae']:<8.3f} {r['rmse']:<8.3f} {r['r2']:<8.3f} {r['bias']:<8.3f}")
 
+    # Create plots directory if it doesn't exist
+    plots_dir = Path('./plots')
+    plots_dir.mkdir(exist_ok=True)
+
     # Create comprehensive visualization
     fig, axes = plt.subplots(2, 3, figsize=(18, 12))
 
-    model_names = ['NBM Model', 'Random Forest', 'Neural Network']
-    colors = ['lightblue', 'lightgreen', 'orange']
+    model_names = ['NBM Model', 'Random Forest']
+    colors = ['lightblue', 'lightgreen']
 
     # Filter model names to only those available in results
     available_models = [name for name in model_names if name in results]
@@ -980,45 +1122,42 @@ def plot_model_comparison_enhanced(model_results, data_dict):
     axes[1,0].axhline(y=0, color='black', linestyle='--', alpha=0.5)
     axes[1,0].tick_params(axis='x', rotation=45)
 
-    # Scatter plot for best performing ML model
+    # Scatter plot for Random Forest model
     ml_models = [name for name in available_models if name != 'NBM Model']
     if ml_models:
-        best_model_name = min(ml_models, key=lambda x: results[x]['mae'])
-        
-        if best_model_name == 'Random Forest':
-            y_pred = model_results['models']['Random Forest'].predict(model_results['X_val_clean'])
-        else:  # Neural Network
-            X_val_scaled = model_results['scaler'].transform(model_results['X_val_clean'])
-            y_pred = model_results['models']['Neural Network'].predict(X_val_scaled)
+        # Use Random Forest (the only ML model now)
+        y_pred = model_results['models']['Random Forest'].predict(model_results['X_val_clean'])
 
         y_true = model_results['y_val_clean']
         axes[1,1].scatter(y_true, y_pred, alpha=0.6, s=1)
         axes[1,1].plot([y_true.min(), y_true.max()], [y_true.min(), y_true.max()], 'r--', lw=2)
         axes[1,1].set_xlabel('Observed Temperature (°C)')
         axes[1,1].set_ylabel('Predicted Temperature (°C)')
-        axes[1,1].set_title(f'{best_model_name}: Observed vs Predicted')
+        axes[1,1].set_title('Random Forest: Observed vs Predicted')
 
-        # Residual plot for best model
+        # Residual plot for Random Forest
         residuals = y_pred - y_true
         axes[1,2].scatter(y_pred, residuals, alpha=0.6, s=1)
         axes[1,2].axhline(y=0, color='r', linestyle='--')
         axes[1,2].set_xlabel('Predicted Temperature (°C)')
         axes[1,2].set_ylabel('Residuals (°C)')
-        axes[1,2].set_title(f'{best_model_name}: Residual Plot')
+        axes[1,2].set_title('Random Forest: Residual Plot')
 
     plt.tight_layout()
+    
+    # Save the plot
+    plt.savefig(plots_dir / 'model_comparison.png', dpi=300, bbox_inches='tight')
     plt.show()
 
     # Calculate and display improvement over NBM baseline
     if 'NBM Model' in results:
         print(f"\nImprovement over NBM Model:")
-        for model_name in ['Random Forest', 'Neural Network']:
-            if model_name in results:
-                mae_improvement = ((results['NBM Model']['mae'] - results[model_name]['mae']) /
-                                 results['NBM Model']['mae']) * 100
-                rmse_improvement = ((results['NBM Model']['rmse'] - results[model_name]['rmse']) /
-                                  results['NBM Model']['rmse']) * 100
-                print(f"{model_name}: MAE {mae_improvement:+.1f}%, RMSE {rmse_improvement:+.1f}%")
+        if 'Random Forest' in results:
+            mae_improvement = ((results['NBM Model']['mae'] - results['Random Forest']['mae']) /
+                             results['NBM Model']['mae']) * 100
+            rmse_improvement = ((results['NBM Model']['rmse'] - results['Random Forest']['rmse']) /
+                              results['NBM Model']['rmse']) * 100
+            print(f"Random Forest: MAE {mae_improvement:+.1f}%, RMSE {rmse_improvement:+.1f}%")
 
 # =============================================================================
 # MAIN EXECUTION PIPELINE
@@ -1037,6 +1176,7 @@ def main():
     print(f"Forecast hours: {FORECAST_HOURS}")
     print(f"QC threshold: {QC_THRESHOLD}°C")
     print(f"Target variable: {target_config['description']} ({target_config['target_type']})")
+    print(f"Mode: {'Post-processing NBM' if POSTPROCESS_NBM else 'Independent forecasting (no NBM)'}")
     
     # Step 1: Load and combine data
     print("\n=== STEP 1: LOADING DATA ===")
@@ -1086,8 +1226,9 @@ def main():
     target_data = time_matched_qc[~np.isnan(time_matched_qc[target_config['nbm_col']])].reset_index(
     ).set_index(['valid_datetime', 'sid']).sort_index()
     
+    # Keep the GEFS observations as the main target, drop NBM observations
     target_data.drop(columns=[target_config['nbm_obs_col']], inplace=True)
-    target_data.rename(columns={target_config['gefs_obs_col']: target_config['obs_col']}, inplace=True)
+    # The gefs_obs_col will be used as the target, no need to rename it
 
     # Clean feature data
     feature_data, drop_info = identify_and_drop_non_predictive_columns(
@@ -1098,7 +1239,7 @@ def main():
     print(f"- Cleaned shape: {drop_info['cleaned_shape']}")
     print(f"- Dropped {len(drop_info['dropped_columns'])} columns")
 
-    # Combine features and targets - need to provide both target columns
+    # Combine features and targets - always include NBM for baseline comparison
     target_data_with_both = target_data.copy()
     if target_config['nbm_col'] in target_data.columns:
         # Both columns are already present, we can use them directly
@@ -1140,6 +1281,10 @@ def main():
     # Feature importance analysis
     print("\n--- Feature Importance Analysis ---")
     feature_importance_df = analyze_feature_importance(model_results, data_dict)
+
+    # Forecast vs observed comparison
+    print("\n--- Forecast vs Observed Comparison ---")
+    plot_forecast_vs_observed_comparison(model_results, data_dict)
 
     # Performance comparison and visualization
     print("\n--- Performance Comparison ---")
