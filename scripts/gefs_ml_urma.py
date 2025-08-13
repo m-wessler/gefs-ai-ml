@@ -44,8 +44,169 @@ warnings.filterwarnings('ignore')
 # Base directory for all data files
 BASE_PATH = '/nas/stid/data/gefs-ml/'
 
-# Station IDs to include in analysis - MODIFY THIS LIST AS NEEDED
-STATION_IDS = ['KSLC']
+def discover_available_stations(base_path=None, forecast_hours=None, data_types=None):
+    """
+    Automatically discover available station IDs by scanning data directory structure.
+    
+    This function searches through the forecast and NBM data directories to find
+    all available station files and extract unique station identifiers.
+    
+    Parameters:
+    -----------
+    base_path : str or None
+        Base directory path where data folders are located. If None, uses BASE_PATH.
+    forecast_hours : List[str] or None
+        List of forecast hours to check (e.g., ['f024', 'f048']). If None, discovers all.
+    data_types : List[str] or None
+        Data types to check ('forecast', 'nbm'). If None, checks both.
+        
+    Returns:
+    --------
+    dict: Contains discovered stations, forecast hours, and statistics
+    """
+    if base_path is None:
+        base_path = BASE_PATH
+    if data_types is None:
+        data_types = ['forecast', 'nbm']
+    
+    base_path = Path(base_path)
+    discovered_info = {
+        'stations': set(),
+        'forecast_hours': set(),
+        'files_found': 0,
+        'data_types_found': {},
+        'station_coverage': {}
+    }
+    
+    print(f"Scanning for available stations in: {base_path}")
+    
+    # Check each data type directory
+    for data_type in data_types:
+        data_dir = base_path / data_type
+        if not data_dir.exists():
+            print(f"Warning: {data_type} directory not found: {data_dir}")
+            continue
+            
+        discovered_info['data_types_found'][data_type] = {
+            'forecast_hours': set(),
+            'stations': set()
+        }
+        
+        # Get forecast hour directories
+        fhour_dirs = [d for d in data_dir.iterdir() if d.is_dir() and d.name.startswith('f')]
+        
+        if forecast_hours is not None:
+            # Filter to only requested forecast hours
+            fhour_dirs = [d for d in fhour_dirs if d.name in forecast_hours]
+        
+        # Scan each forecast hour directory
+        for fhour_dir in sorted(fhour_dirs):
+            fhour = fhour_dir.name
+            discovered_info['forecast_hours'].add(fhour)
+            discovered_info['data_types_found'][data_type]['forecast_hours'].add(fhour)
+            
+            # Find CSV files in this directory
+            csv_files = list(fhour_dir.glob("*.csv"))
+            
+            for csv_file in csv_files:
+                discovered_info['files_found'] += 1
+                
+                # Extract station ID from filename pattern: STATION_2020_2025_fXXX.csv
+                filename = csv_file.name
+                if '_2020_2025_' in filename and filename.endswith('.csv'):
+                    station_id = filename.split('_2020_2025_')[0]
+                    discovered_info['stations'].add(station_id)
+                    discovered_info['data_types_found'][data_type]['stations'].add(station_id)
+                    
+                    # Track station coverage across forecast hours
+                    if station_id not in discovered_info['station_coverage']:
+                        discovered_info['station_coverage'][station_id] = set()
+                    discovered_info['station_coverage'][station_id].add(fhour)
+    
+    # Convert sets to sorted lists for easier use
+    discovered_info['stations'] = sorted(list(discovered_info['stations']))
+    discovered_info['forecast_hours'] = sorted(list(discovered_info['forecast_hours']))
+    
+    # Print discovery summary
+    print(f"\nDiscovery Results:")
+    print(f"  Total stations found: {len(discovered_info['stations'])}")
+    print(f"  Total forecast hours found: {len(discovered_info['forecast_hours'])}")
+    print(f"  Total files scanned: {discovered_info['files_found']}")
+    
+    if discovered_info['stations']:
+        print(f"\nAvailable stations: {discovered_info['stations']}")
+        print(f"Available forecast hours: {discovered_info['forecast_hours']}")
+        
+        # Show station coverage statistics
+        complete_stations = []
+        partial_stations = []
+        total_fhours = len(discovered_info['forecast_hours'])
+        
+        for station, fhours in discovered_info['station_coverage'].items():
+            if len(fhours) == total_fhours:
+                complete_stations.append(station)
+            else:
+                partial_stations.append(f"{station}({len(fhours)}/{total_fhours})")
+        
+        if complete_stations:
+            print(f"\nStations with complete forecast hour coverage: {complete_stations}")
+        if partial_stations:
+            print(f"Stations with partial coverage: {partial_stations}")
+    
+    return discovered_info
+
+def list_available_stations(base_path=None, forecast_hours=None, min_coverage=1.0):
+    """
+    Convenience function to list available stations with filtering options.
+    
+    Parameters:
+    -----------
+    base_path : str or None
+        Base directory path where data folders are located. If None, uses BASE_PATH.
+    forecast_hours : List[str] or None
+        Specific forecast hours to check. If None, checks all available.
+    min_coverage : float
+        Minimum fraction of forecast hours a station must have (0.0 to 1.0).
+        1.0 = station must have data for ALL forecast hours
+        0.5 = station must have data for at least 50% of forecast hours
+        
+    Returns:
+    --------
+    List[str]: Station IDs that meet the coverage criteria
+    """
+    discovery = discover_available_stations(base_path, forecast_hours)
+    
+    if not discovery['stations']:
+        return []
+    
+    total_fhours = len(discovery['forecast_hours'])
+    required_fhours = int(total_fhours * min_coverage)
+    
+    qualified_stations = []
+    for station, fhours in discovery['station_coverage'].items():
+        if len(fhours) >= required_fhours:
+            qualified_stations.append(station)
+    
+    print(f"\nFiltered Results (min coverage {min_coverage*100:.0f}%):")
+    print(f"  Qualified stations: {qualified_stations}")
+    print(f"  ({len(qualified_stations)}/{len(discovery['stations'])} stations qualify)")
+    
+    return qualified_stations
+
+# Automatically discover available stations (set AUTO_DISCOVER_STATIONS = False to use manual list)
+AUTO_DISCOVER_STATIONS = True
+
+if AUTO_DISCOVER_STATIONS:
+    try:
+        station_discovery = discover_available_stations()
+        STATION_IDS = station_discovery['stations']
+        if not STATION_IDS:
+            print("Warning: No stations discovered automatically, using manual list")
+    except Exception as e:
+        print(f"Error during station discovery: {e}")
+else:
+    # Manual station list - MODIFY THIS LIST AS NEEDED
+    STATION_IDS = ['KSLC', 'KBOI', 'KEKO', 'KSEA', 'KLAX']
 
 # Forecast hours to include - MODIFY THIS LIST AS NEEDED
 FORECAST_HOURS = ['f024']
@@ -113,9 +274,9 @@ def get_target_config(target_type=None):
 # =============================================================================
 
 def load_combined_data(
-    station_ids: List[str] = STATION_IDS,
-    forecast_hours: List[str] = FORECAST_HOURS,
-    base_path: str = BASE_PATH
+    station_ids: List[str] = None,
+    forecast_hours: List[str] = None,
+    base_path: str = None
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Load and combine forecast, NBM, and URMA data into three DataFrames.
@@ -126,18 +287,26 @@ def load_combined_data(
 
     Parameters:
     -----------
-    station_ids : List[str]
-        List of station IDs to load (e.g., ['KSLC', 'KBOI'])
-    forecast_hours : List[str] 
-        List of forecast hours to load (e.g., ['f120'])
-    base_path : str
-        Base directory path where data folders are located
+    station_ids : List[str] or None
+        List of station IDs to load (e.g., ['KSLC', 'KBOI']). If None, uses STATION_IDS.
+    forecast_hours : List[str] or None
+        List of forecast hours to load (e.g., ['f120']). If None, uses FORECAST_HOURS.
+    base_path : str or None
+        Base directory path where data folders are located. If None, uses BASE_PATH.
 
     Returns:
     --------
     tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]
         forecast_df, nbm_df, urma_df with MultiIndex [valid_datetime, sid/station_id]
     """
+    # Use defaults if not provided
+    if station_ids is None:
+        station_ids = STATION_IDS
+    if forecast_hours is None:
+        forecast_hours = FORECAST_HOURS
+    if base_path is None:
+        base_path = BASE_PATH
+        
     print(f"Loading data from: {base_path}")
     print(f"Station IDs: {station_ids}")
     print(f"Forecast hours: {forecast_hours}")
@@ -1160,6 +1329,300 @@ def plot_model_comparison_enhanced(model_results, data_dict):
             print(f"Random Forest: MAE {mae_improvement:+.1f}%, RMSE {rmse_improvement:+.1f}%")
 
 # =============================================================================
+# MULTI-FORECAST HOUR ANALYSIS FUNCTIONS
+# =============================================================================
+
+def evaluate_metrics_by_forecast_hour(forecast_hours=None, target_config=None):
+    """
+    Evaluate model performance metrics (R², MAE, RMSE) across multiple forecast hours.
+    
+    Parameters:
+    -----------
+    forecast_hours : List[str] or None
+        List of forecast hours to evaluate. If None, uses FORECAST_HOURS from config.
+    target_config : dict or None
+        Target configuration dict from get_target_config(). If None, uses current TARGET_VARIABLE.
+        
+    Returns:
+    --------
+    dict: Results containing metrics for each forecast hour and plotting data
+    """
+    if forecast_hours is None:
+        forecast_hours = FORECAST_HOURS
+    if target_config is None:
+        target_config = get_target_config()
+    
+    results_by_hour = {}
+    metrics_df_list = []
+    
+    print(f"=== EVALUATING METRICS ACROSS {len(forecast_hours)} FORECAST HOURS ===")
+    
+    for i, fhour in enumerate(forecast_hours):
+        print(f"\n--- Processing {fhour} ({i+1}/{len(forecast_hours)}) ---")
+        
+        try:
+            # Run the main pipeline for this forecast hour - pass specific forecast hour
+            pipeline_results = run_single_forecast_hour_pipeline(target_config, forecast_hour=fhour)
+            
+            # Extract performance metrics
+            model_results = pipeline_results['results']['results']
+            
+            # Collect metrics for each model
+            for model_name, metrics in model_results.items():
+                metrics_row = {
+                    'forecast_hour': fhour,
+                    'forecast_hour_numeric': int(fhour[1:]),  # Convert f024 -> 24
+                    'model': model_name,
+                    'r2': metrics['r2'],
+                    'mae': metrics['mae'],
+                    'rmse': metrics['rmse'],
+                    'bias': metrics['bias'],
+                    'n_samples': metrics['n_samples']
+                }
+                metrics_df_list.append(metrics_row)
+            
+            results_by_hour[fhour] = pipeline_results
+            print(f"✓ {fhour} completed successfully")
+            
+        except Exception as e:
+            print(f"✗ Error processing {fhour}: {str(e)}")
+            results_by_hour[fhour] = {'error': str(e)}
+    
+    # Create comprehensive results DataFrame
+    metrics_df = pd.DataFrame(metrics_df_list)
+    
+    return {
+        'metrics_df': metrics_df,
+        'results_by_hour': results_by_hour,
+        'forecast_hours': forecast_hours
+    }
+
+def plot_metrics_timeseries(metrics_results, save_plots=True):
+    """
+    Create timeseries plots of model performance metrics across forecast hours.
+    
+    Parameters:
+    -----------
+    metrics_results : dict
+        Results from evaluate_metrics_by_forecast_hour()
+    save_plots : bool
+        Whether to save plots to disk
+    """
+    print("=== STARTING PLOT GENERATION ===")
+    
+    # Debug: Check if we have the right data structure
+    if not isinstance(metrics_results, dict):
+        print(f"ERROR: metrics_results is not a dict, got {type(metrics_results)}")
+        return
+    
+    if 'metrics_df' not in metrics_results:
+        print(f"ERROR: 'metrics_df' not found in metrics_results. Keys: {metrics_results.keys()}")
+        return
+    
+    metrics_df = metrics_results['metrics_df']
+    
+    print(f"DEBUG: metrics_df type: {type(metrics_df)}")
+    print(f"DEBUG: metrics_df shape: {metrics_df.shape}")
+    
+    if metrics_df.empty:
+        print("ERROR: No metrics data available for plotting - DataFrame is empty")
+        return
+    
+    print(f"DEBUG: metrics_df columns: {list(metrics_df.columns)}")
+    print(f"DEBUG: metrics_df sample:\n{metrics_df.head()}")
+    
+    # Create plots directory if needed
+    if save_plots:
+        plots_dir = Path('./plots')
+        plots_dir.mkdir(exist_ok=True)
+        print(f"DEBUG: Created plots directory: {plots_dir}")
+    
+    try:
+        # Set up the plotting style
+        plt.style.use('default')
+        sns.set_palette("husl")
+        
+        # Create figure with subplots for each metric
+        fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+        fig.suptitle('Model Performance Metrics vs Forecast Hour', fontsize=16, fontweight='bold')
+        
+        metrics_to_plot = ['r2', 'mae', 'rmse', 'bias']
+        metric_labels = ['R²', 'MAE (°C)', 'RMSE (°C)', 'Bias (°C)']
+        
+        print("DEBUG: Starting to create subplots...")
+        
+        for idx, (metric, label) in enumerate(zip(metrics_to_plot, metric_labels)):
+            ax = axes[idx // 2, idx % 2]
+            print(f"DEBUG: Processing metric {metric} ({label})")
+            
+            # Plot each model
+            plotted_any = False
+            for model in metrics_df['model'].unique():
+                model_data = metrics_df[metrics_df['model'] == model].sort_values('forecast_hour_numeric')
+                
+                print(f"DEBUG: Model {model} has {len(model_data)} data points")
+                
+                if not model_data.empty:
+                    x_vals = model_data['forecast_hour_numeric']
+                    y_vals = model_data[metric]
+                    
+                    print(f"DEBUG: Plotting {model}: x={list(x_vals)}, y={list(y_vals)}")
+                    
+                    ax.plot(x_vals, y_vals, 
+                           marker='o', linewidth=2, markersize=8, label=model)
+                    plotted_any = True
+            
+            if not plotted_any:
+                print(f"WARNING: No data plotted for metric {metric}")
+            
+            ax.set_xlabel('Forecast Hour')
+            ax.set_ylabel(label)
+            ax.set_title(f'{label} vs Forecast Hour')
+            ax.grid(True, alpha=0.3)
+            ax.legend()
+            
+            # Format x-axis to show forecast hours
+            forecast_hours_numeric = sorted(metrics_df['forecast_hour_numeric'].unique())
+            ax.set_xticks(forecast_hours_numeric)
+            ax.set_xticklabels([f'f{h:03d}' for h in forecast_hours_numeric], rotation=45)
+        
+        plt.tight_layout()
+        
+        if save_plots:
+            plot_path = plots_dir / 'metrics_vs_forecast_hour.png'
+            plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+            print(f"SUCCESS: Plot saved to: {plot_path}")
+        
+        print("DEBUG: Attempting to show plot...")
+        plt.show()
+        print("DEBUG: Plot shown successfully")
+        
+        # Print summary statistics
+        print("\n=== PERFORMANCE SUMMARY ACROSS FORECAST HOURS ===")
+        for model in metrics_df['model'].unique():
+            model_data = metrics_df[metrics_df['model'] == model]
+            print(f"\n{model}:")
+            print(f"  R² range: {model_data['r2'].min():.3f} - {model_data['r2'].max():.3f}")
+            print(f"  MAE range: {model_data['mae'].min():.3f} - {model_data['mae'].max():.3f} °C")
+            print(f"  RMSE range: {model_data['rmse'].min():.3f} - {model_data['rmse'].max():.3f} °C")
+            print(f"  Bias range: {model_data['bias'].min():.3f} - {model_data['bias'].max():.3f} °C")
+            
+    except Exception as e:
+        print(f"ERROR in plot generation: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return
+    
+    print("=== PLOT GENERATION COMPLETED ===")
+    return True
+
+def run_single_forecast_hour_pipeline(target_config, forecast_hour=None):
+    """
+    Run the ML pipeline for a single forecast hour (used internally by evaluate_metrics_by_forecast_hour).
+    This is essentially the same as the main() function but returns results instead of printing summary.
+    
+    Parameters:
+    -----------
+    target_config : dict
+        Target configuration dict from get_target_config()
+    forecast_hour : str or None
+        Single forecast hour to process (e.g., 'f024'). If None, uses all FORECAST_HOURS.
+    """
+    # Determine which forecast hours to use
+    if forecast_hour is not None:
+        forecast_hours_to_use = [forecast_hour]
+        print(f"Processing single forecast hour: {forecast_hour}")
+    else:
+        forecast_hours_to_use = FORECAST_HOURS
+        print(f"Processing all forecast hours: {forecast_hours_to_use}")
+    
+    # Step 1: Load and combine data for specific forecast hour(s)
+    forecast, nbm, urma = load_combined_data(
+        station_ids=STATION_IDS,
+        forecast_hours=forecast_hours_to_use,
+        base_path=BASE_PATH
+    )
+
+    # Step 2: Prepare data subsets with proper column naming
+    forecast_cols = [target_config['forecast_col'], target_config['obs_col']]
+    nbm_cols = [target_config['forecast_col'], target_config['obs_col']]
+    
+    forecast_subset = forecast[forecast_cols].dropna().sort_index()
+    nbm_subset = nbm[nbm_cols].dropna().sort_index()
+    urma_subset = urma[[target_config['urma_field']]].dropna()
+
+    # Standardize URMA column names and index
+    urma_subset = urma_subset.reset_index().rename(
+        columns={target_config['urma_field']: target_config['obs_col'],
+                 'valid_time': 'valid_datetime', 'station_id': 'sid'}
+    ).set_index(['valid_datetime', 'sid']).sort_index()
+
+    # Add prefixes to distinguish data sources
+    forecast_subset.columns = ['gefs_' + col for col in forecast_subset.columns]
+    nbm_subset.columns = ['nbm_' + col for col in nbm_subset.columns]
+    urma_subset.columns = ['urma_' + col for col in urma_subset.columns]
+
+    # Convert URMA temperature from Kelvin to Celsius
+    urma_subset[target_config['urma_obs_col']] -= 273.15
+
+    # Step 3: Create time-matched dataset
+    time_matched_df = create_time_matched_dataset(forecast_subset, nbm_subset, urma_subset)
+
+    # Step 4: Apply quality control
+    time_matched_qc, qc_stats = apply_qc_filter(time_matched_df, target_config=target_config)
+
+    # Step 5: Prepare ML dataset
+    target_data = time_matched_qc[time_matched_qc[target_config['nbm_col']].notna()].reset_index(
+    ).set_index(['valid_datetime', 'sid']).sort_index()
+    
+    target_data.drop(columns=[target_config['nbm_obs_col']], inplace=True)
+
+    # Clean feature data
+    feature_data, drop_info = identify_and_drop_non_predictive_columns(
+        forecast[forecast[target_config['obs_col']].notna()].sort_index())
+
+    # Combine features and targets
+    target_data_with_both = target_data.copy()
+    if target_config['nbm_col'] in target_data.columns:
+        ml_dataset, merge_stats = combine_features_and_targets(
+            feature_data, target_data_with_both, target_config=target_config
+        )
+        common_indices = feature_data.index.intersection(target_data.index)
+        if target_config['nbm_col'] in target_data.columns:
+            ml_dataset[target_config['nbm_col']] = target_data.loc[common_indices, target_config['nbm_col']]
+    else:
+        ml_dataset, merge_stats = combine_features_and_targets(
+            feature_data, target_data_with_both, target_config=target_config
+        )
+
+    # Remove unnecessary columns
+    opposite_type = 'tmin_2m' if target_config['target_type'] == 'tmax' else 'tmax_2m'
+    if opposite_type in ml_dataset.columns:
+        ml_dataset.drop(columns=[opposite_type], inplace=True)
+
+    # Step 6: Prepare data for post-processing
+    data_dict = prepare_postprocessing_data(ml_dataset, target_config=target_config)
+
+    # Step 7: Create time-based splits
+    splits = create_time_based_splits(data_dict)
+
+    # Step 8: Train and evaluate models
+    model_results = train_postprocessing_models_with_tuning(splits, data_dict, target_config=target_config)
+
+    return {
+        'data': {
+            'forecast': forecast,
+            'nbm': nbm,
+            'urma': urma,
+            'time_matched_qc': time_matched_qc,
+            'ml_dataset': ml_dataset
+        },
+        'results': model_results,
+        'qc_stats': qc_stats,
+        'splits': splits
+    }
+
+# =============================================================================
 # MAIN EXECUTION PIPELINE
 # =============================================================================
 
@@ -1223,7 +1686,7 @@ def main():
     print("\n=== STEP 4: PREPARING ML DATASET ===")
     
     # Create target dataset from QC'd data
-    target_data = time_matched_qc[~np.isnan(time_matched_qc[target_config['nbm_col']])].reset_index(
+    target_data = time_matched_qc[time_matched_qc[target_config['nbm_col']].notna()].reset_index(
     ).set_index(['valid_datetime', 'sid']).sort_index()
     
     # Keep the GEFS observations as the main target, drop NBM observations
@@ -1232,7 +1695,7 @@ def main():
 
     # Clean feature data
     feature_data, drop_info = identify_and_drop_non_predictive_columns(
-        forecast[~np.isnan(forecast[target_config['obs_col']])].sort_index())
+        forecast[forecast[target_config['obs_col']].notna()].sort_index())
     
     print(f"Feature cleaning results:")
     print(f"- Original shape: {drop_info['original_shape']}")
@@ -1306,6 +1769,337 @@ def main():
         'splits': splits
     }
 
+def main_multi_forecast_hour():
+    """
+    Main execution function for multi-forecast hour analysis.
+    Evaluates model performance across all forecast hours and creates timeseries plots.
+    """
+    print("=== MULTI-FORECAST HOUR ANALYSIS ===")
+    print(f"Evaluating forecast hours: {FORECAST_HOURS}")
+    
+    # Run evaluation across all forecast hours
+    metrics_results = evaluate_metrics_by_forecast_hour()
+    
+    # Create timeseries plots
+    print("\n=== CREATING TIMESERIES PLOTS ===")
+    plot_metrics_timeseries(metrics_results)
+    
+    print("\n=== MULTI-FORECAST HOUR ANALYSIS COMPLETED ===")
+    return metrics_results
+
+def load_and_plot_existing_results():
+    """
+    Load existing multi-forecast hour results and create timeseries plots.
+    Useful when you want to recreate plots without rerunning the analysis.
+    """
+    import pickle
+    
+    results_file = Path('./results/multi_forecast_hour_results.pkl')
+    
+    if not results_file.exists():
+        print(f"Results file not found: {results_file}")
+        print("Please run the main script with MULTI_FORECAST_HOUR_ANALYSIS = True first")
+        return None
+    
+    print(f"Loading existing results from: {results_file}")
+    with open(results_file, 'rb') as f:
+        metrics_results = pickle.load(f)
+    
+    # Debug the loaded results
+    print("=== DEBUGGING LOADED RESULTS ===")
+    print(f"Type of loaded data: {type(metrics_results)}")
+    print(f"Keys in loaded data: {metrics_results.keys() if isinstance(metrics_results, dict) else 'Not a dict'}")
+    
+    if 'metrics_df' in metrics_results:
+        metrics_df = metrics_results['metrics_df']
+        print(f"metrics_df type: {type(metrics_df)}")
+        print(f"metrics_df shape: {metrics_df.shape}")
+        print(f"metrics_df empty: {metrics_df.empty}")
+        if not metrics_df.empty:
+            print(f"metrics_df columns: {list(metrics_df.columns)}")
+            print(f"metrics_df head:\n{metrics_df.head()}")
+    
+    if 'results_by_hour' in metrics_results:
+        results_by_hour = metrics_results['results_by_hour']
+        print(f"\nresults_by_hour type: {type(results_by_hour)}")
+        print(f"results_by_hour keys: {list(results_by_hour.keys()) if isinstance(results_by_hour, dict) else 'Not a dict'}")
+        
+        # Check for errors in each forecast hour
+        for fhour, result in results_by_hour.items():
+            if isinstance(result, dict) and 'error' in result:
+                print(f"ERROR in {fhour}: {result['error']}")
+            elif isinstance(result, dict):
+                print(f"{fhour}: Success (keys: {list(result.keys())})")
+            else:
+                print(f"{fhour}: Unexpected result type: {type(result)}")
+    
+    # Extract the metrics DataFrame
+    metrics_df = metrics_results.get('metrics_df', pd.DataFrame())
+    
+    if metrics_df.empty:
+        print("No metrics data found in results")
+        print("This suggests all forecast hours failed during processing.")
+        print("Check the error messages above for details.")
+        return None
+    
+    print(f"Loaded metrics for {len(metrics_df)} model-forecast hour combinations")
+    print(f"Models: {metrics_df['model'].unique()}")
+    print(f"Forecast hours: {sorted(metrics_df['forecast_hour_numeric'].unique())}")
+    
+    # Create the timeseries plots
+    print("\n=== CREATING TIMESERIES PLOTS FROM SAVED RESULTS ===")
+    plot_metrics_timeseries(metrics_results)
+    
+    # Print detailed summary
+    print("\n=== DETAILED METRICS TABLE ===")
+    pivot_table = metrics_df.pivot_table(index='forecast_hour', 
+                                        columns='model', 
+                                        values=['r2', 'mae', 'rmse'], 
+                                        aggfunc='first').round(3)
+    print(pivot_table)
+    
+    return metrics_results
+
+def debug_single_forecast_hour(fhour='f024'):
+    """
+    Debug function to test a single forecast hour and see what's failing.
+    """
+    print(f"=== DEBUGGING SINGLE FORECAST HOUR: {fhour} ===")
+    
+    # Get target configuration
+    target_config = get_target_config()
+    print(f"Target config: {target_config}")
+    
+    try:
+        print(f"Step 1: Loading data for {fhour}")
+        forecast, nbm, urma = load_combined_data(
+            station_ids=STATION_IDS,
+            forecast_hours=[fhour],  # Only load the specific forecast hour
+            base_path=BASE_PATH
+        )
+        print(f"Loaded - Forecast: {forecast.shape}, NBM: {nbm.shape}, URMA: {urma.shape}")
+        
+        print(f"Step 2: Preparing data subsets")
+        forecast_cols = [target_config['forecast_col'], target_config['obs_col']]
+        nbm_cols = [target_config['forecast_col'], target_config['obs_col']]
+        
+        print(f"Looking for forecast columns: {forecast_cols}")
+        print(f"Available forecast columns: {list(forecast.columns)}")
+        print(f"Looking for NBM columns: {nbm_cols}")
+        print(f"Available NBM columns: {list(nbm.columns)}")
+        
+        # Check if required columns exist
+        missing_forecast_cols = [col for col in forecast_cols if col not in forecast.columns]
+        missing_nbm_cols = [col for col in nbm_cols if col not in nbm.columns]
+        
+        if missing_forecast_cols:
+            print(f"ERROR: Missing forecast columns: {missing_forecast_cols}")
+        if missing_nbm_cols:
+            print(f"ERROR: Missing NBM columns: {missing_nbm_cols}")
+            
+        if missing_forecast_cols or missing_nbm_cols:
+            print("Cannot continue - missing required columns")
+            return
+        
+        forecast_subset = forecast[forecast_cols].dropna().sort_index()
+        nbm_subset = nbm[nbm_cols].dropna().sort_index()
+        print(f"Subsets - Forecast: {forecast_subset.shape}, NBM: {nbm_subset.shape}")
+        
+        # Check URMA data
+        print(f"Step 3: Checking URMA data")
+        print(f"URMA columns: {list(urma.columns)}")
+        print(f"Looking for URMA field: {target_config['urma_field']}")
+        
+        if target_config['urma_field'] not in urma.columns:
+            print(f"ERROR: URMA field '{target_config['urma_field']}' not found")
+            print(f"Available URMA fields: {list(urma.columns)}")
+            return
+            
+        urma_subset = urma[[target_config['urma_field']]].dropna()
+        print(f"URMA subset: {urma_subset.shape}")
+        
+        # Test the full pipeline
+        print(f"Step 4: Testing full pipeline for {fhour}")
+        pipeline_results = run_single_forecast_hour_pipeline(target_config, forecast_hour=fhour)
+        
+        print(f"✓ Pipeline completed successfully!")
+        print(f"Results keys: {list(pipeline_results.keys())}")
+        
+        if 'results' in pipeline_results and 'results' in pipeline_results['results']:
+            model_results = pipeline_results['results']['results']
+            print(f"Model results:")
+            for model_name, metrics in model_results.items():
+                print(f"  {model_name}: R²={metrics['r2']:.3f}, MAE={metrics['mae']:.3f}, RMSE={metrics['rmse']:.3f}")
+        
+        return pipeline_results
+        
+    except Exception as e:
+        print(f"ERROR in debug: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+def test_multi_forecast_hour_simple():
+    """
+    Simple test function to run just 2 forecast hours and see what happens.
+    """
+    print("=== TESTING MULTI-FORECAST HOUR (SIMPLE) ===")
+    
+    target_config = get_target_config()
+    test_hours = ['f024', 'f048']  # Just test 2 hours
+    
+    results = []
+    
+    for fhour in test_hours:
+        print(f"\n--- Testing {fhour} ---")
+        try:
+            pipeline_result = run_single_forecast_hour_pipeline(target_config, forecast_hour=fhour)
+            
+            if 'results' in pipeline_result and 'results' in pipeline_result['results']:
+                model_results = pipeline_result['results']['results']
+                
+                for model_name, metrics in model_results.items():
+                    result_row = {
+                        'forecast_hour': fhour,
+                        'forecast_hour_numeric': int(fhour[1:]),
+                        'model': model_name,
+                        'r2': metrics['r2'],
+                        'mae': metrics['mae'],
+                        'rmse': metrics['rmse'],
+                        'bias': metrics['bias'],
+                        'n_samples': metrics['n_samples']
+                    }
+                    results.append(result_row)
+                    print(f"✓ {model_name}: R²={metrics['r2']:.3f}, MAE={metrics['mae']:.3f}")
+            else:
+                print(f"✗ No model results found for {fhour}")
+                
+        except Exception as e:
+            print(f"✗ Error in {fhour}: {str(e)}")
+    
+    if results:
+        print(f"\n=== COLLECTED {len(results)} RESULTS ===")
+        results_df = pd.DataFrame(results)
+        print(results_df)
+        
+        # Save results
+        results_dir = Path('./results')
+        results_dir.mkdir(exist_ok=True)
+        results_df.to_csv(results_dir / 'test_multi_forecast_results.csv', index=False)
+        print(f"Test results saved to: {results_dir / 'test_multi_forecast_results.csv'}")
+        
+        return results_df
+    else:
+        print("No results collected - all forecast hours failed")
+        return None
+
 if __name__ == "__main__":
-    # Execute the complete pipeline
-    pipeline_results = main()
+    # Configuration for execution mode
+    # Options:
+    # - 'multi_analysis': Run analysis across each forecast hour individually and create timeseries plots
+    # - 'plot_existing': Load existing results and create plots without rerunning analysis  
+    # - 'standard': Run the pipeline once with all forecast hours combined
+    # - 'debug': Debug a single forecast hour to identify issues
+    # - 'test_simple': Test just 2 forecast hours to verify the pipeline works
+    
+    EXECUTION_MODE = 'multi_analysis'  # Change this to control what the script does
+    
+    if EXECUTION_MODE == 'multi_analysis':
+        # Run analysis across each forecast hour individually and create timeseries plots
+        print("=== RUNNING MULTI-FORECAST HOUR ANALYSIS ===")
+        print("This will evaluate each forecast hour separately and create timeseries plots.")
+        print("This may take a while as it runs the full pipeline for each forecast hour.")
+        
+        metrics_results = main_multi_forecast_hour()
+        
+        # Save the results as CSV
+        import pickle
+        results_dir = Path('./results')
+        results_dir.mkdir(exist_ok=True)
+        
+        # Save the metrics DataFrame as CSV
+        metrics_csv_path = results_dir / 'multi_forecast_hour_metrics.csv'
+        metrics_results['metrics_df'].to_csv(metrics_csv_path, index=False)
+        print(f"Metrics saved to: {metrics_csv_path}")
+        
+        # Also save a summary CSV with pivot table format
+        if not metrics_results['metrics_df'].empty:
+            pivot_table = metrics_results['metrics_df'].pivot_table(
+                index='forecast_hour', 
+                columns='model', 
+                values=['r2', 'mae', 'rmse', 'bias'], 
+                aggfunc='first'
+            ).round(4)
+            
+            summary_csv_path = results_dir / 'multi_forecast_hour_summary.csv'
+            pivot_table.to_csv(summary_csv_path)
+            print(f"Summary table saved to: {summary_csv_path}")
+        
+        # Keep the pickle for compatibility with plotting functions
+        with open(results_dir / 'multi_forecast_hour_results.pkl', 'wb') as f:
+            pickle.dump(metrics_results, f)
+        print(f"Full results (pkl) saved to: {results_dir / 'multi_forecast_hour_results.pkl'}")
+        
+    elif EXECUTION_MODE == 'plot_existing':
+        # Load existing results and create plots
+        print("=== LOADING EXISTING RESULTS AND CREATING PLOTS ===")
+        
+        metrics_results = load_and_plot_existing_results()
+        if metrics_results is None:
+            print("No existing results found. Set EXECUTION_MODE = 'multi_analysis' to run the full analysis.")
+    
+    elif EXECUTION_MODE == 'debug':
+        # Debug a single forecast hour to identify issues
+        print("=== DEBUGGING SINGLE FORECAST HOUR ===")
+        
+        # First, check the existing results
+        load_and_plot_existing_results()
+        
+        # Then debug a single forecast hour
+        debug_single_forecast_hour('f024')
+    
+    elif EXECUTION_MODE == 'test_simple':
+        # Test just 2 forecast hours to verify everything works
+        print("=== TESTING SIMPLE MULTI-FORECAST HOUR ===")
+        
+        test_results = test_multi_forecast_hour_simple()
+        if test_results is not None:
+            print("✓ Test completed successfully! You can now run full analysis.")
+        else:
+            print("✗ Test failed - check errors above")
+        
+    else:  # standard
+        # Execute the complete pipeline with all forecast hours combined
+        print("=== RUNNING STANDARD PIPELINE ===")
+        print("This will run the pipeline once with all forecast hours combined.")
+        
+        pipeline_results = main()
+        
+        # Save the results as CSV and pickle
+        import pickle
+        results_dir = Path('./results')
+        results_dir.mkdir(exist_ok=True)
+        
+        # Save as pickle for full compatibility
+        with open(results_dir / 'pipeline_results.pkl', 'wb') as f:
+            pickle.dump(pipeline_results, f)
+        print(f"Full results (pkl) saved to: {results_dir / 'pipeline_results.pkl'}")
+        
+        # Save key metrics as CSV if available
+        if 'results' in pipeline_results and 'results' in pipeline_results['results']:
+            model_metrics = []
+            for model_name, metrics in pipeline_results['results']['results'].items():
+                model_metrics.append({
+                    'model': model_name,
+                    'r2': metrics['r2'],
+                    'mae': metrics['mae'],
+                    'rmse': metrics['rmse'],
+                    'bias': metrics['bias'],
+                    'n_samples': metrics['n_samples']
+                })
+            
+            if model_metrics:
+                metrics_df = pd.DataFrame(model_metrics)
+                metrics_csv_path = results_dir / 'pipeline_model_metrics.csv'
+                metrics_df.to_csv(metrics_csv_path, index=False)
+                print(f"Model metrics saved to: {metrics_csv_path}")
