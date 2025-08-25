@@ -27,7 +27,9 @@ import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend
 import matplotlib.pyplot as plt
 from pathlib import Path
-from datetime import timedelta
+from datetime import timedelta, datetime
+import json
+import joblib
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor, VotingRegressor
 from sklearn.linear_model import Ridge, Lasso
 from sklearn.svm import SVR
@@ -40,16 +42,240 @@ warnings.filterwarnings('ignore')
 # CONFIGURATION SECTION
 # =============================================================================
 
-BASE_PATH = 'data/'
+BASE_PATH = "N:/data/gefs-ml/"
 STATION_IDS = ['KSLC', 'KBOI', 'KLAS', 'KSEA', 'KLAX']
+USE_ALL_AVAILABLE_STATIONS = True  # Set to True to use all available stations instead of STATION_IDS
+MAX_STATIONS = 500  # Maximum number of stations to use when USE_ALL_AVAILABLE_STATIONS is True
+RANDOM_STATION_SEED = 42  # Random seed for reproducible station selection
 FORECAST_HOURS = ['f024']
-QC_THRESHOLD = 5.0  # Maximum allowed deviation between URMA and station obs in °C
+QC_THRESHOLD = 2.5  # Maximum allowed deviation between URMA and station obs in °C
 TARGET_VARIABLE = 'tmax'  # 'tmax' or 'tmin'
-USE_HYPERPARAMETER_TUNING = False  # Set to True for better performance but slower training
+
+USE_HYPERPARAMETER_TUNING = True  # Set to True for better performance but slower training
 USE_VALIDATION_BASED_TRAINING = True  # Use validation set to prevent overfitting
-USE_ENSEMBLE_MODELS = True  # Use multiple models and ensemble them
+USE_ENSEMBLE_MODELS = False  # Use multiple models and ensemble them
+
 USE_FEATURE_SELECTION = True  # Apply feature selection to reduce overfitting
 INCLUDE_NBM_AS_PREDICTOR = False  # Include NBM forecasts as input features (vs baseline only)
+INCLUDE_GEFS_AS_PREDICTOR = True  # Include GEFS forecast of target variable as predictor (True = less independent)
+
+# =============================================================================
+# MODEL EXPORT/IMPORT FUNCTIONS
+# =============================================================================
+
+def save_model_and_metadata(model, selected_features, target_config, results, qc_stats, model_dir='models'):
+    """Save trained model and all metadata needed for future predictions."""
+    
+    # Create models directory
+    model_path = Path(model_dir)
+    model_path.mkdir(exist_ok=True)
+    
+    # Create timestamp for unique naming
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    target_type = target_config['target_type']
+    
+    # Define file paths
+    model_filename = f"gefs_ml_model_{target_type}_{timestamp}.joblib"
+    metadata_filename = f"gefs_ml_metadata_{target_type}_{timestamp}.json"
+    
+    model_file_path = model_path / model_filename
+    metadata_file_path = model_path / metadata_filename
+    
+    # Save the trained model
+    joblib.dump(model, model_file_path)
+    print(f"Model saved to: {model_file_path}")
+    
+    # Prepare metadata for export
+    metadata = {
+        'model_info': {
+            'target_type': target_config['target_type'],
+            'target_description': target_config['description'],
+            'model_type': type(model).__name__,
+            'training_timestamp': timestamp,
+            'script_version': '1.0'
+        },
+        'training_config': {
+            'BASE_PATH': BASE_PATH,
+            'FORECAST_HOURS': FORECAST_HOURS,
+            'QC_THRESHOLD': QC_THRESHOLD,
+            'TARGET_VARIABLE': TARGET_VARIABLE,
+            'USE_HYPERPARAMETER_TUNING': USE_HYPERPARAMETER_TUNING,
+            'USE_VALIDATION_BASED_TRAINING': USE_VALIDATION_BASED_TRAINING,
+            'USE_ENSEMBLE_MODELS': USE_ENSEMBLE_MODELS,
+            'USE_FEATURE_SELECTION': USE_FEATURE_SELECTION,
+            'INCLUDE_NBM_AS_PREDICTOR': INCLUDE_NBM_AS_PREDICTOR,
+            'INCLUDE_GEFS_AS_PREDICTOR': INCLUDE_GEFS_AS_PREDICTOR,
+            'USE_ALL_AVAILABLE_STATIONS': USE_ALL_AVAILABLE_STATIONS,
+            'MAX_STATIONS': MAX_STATIONS,
+            'RANDOM_STATION_SEED': RANDOM_STATION_SEED
+        },
+        'target_config': target_config,
+        'features': {
+            'selected_features': selected_features,
+            'n_features': len(selected_features),
+            'feature_types': {
+                'gefs_atmospheric': [f for f in selected_features if f.startswith('gefs_') and 'obs' not in f.lower()],
+                'engineered': [f for f in selected_features if any(term in f for term in ['hour', 'day_of_year', 'month', 'station_', 'season_'])],
+                'nbm_features': [f for f in selected_features if f.startswith('nbm_')],
+                'other': [f for f in selected_features if not any([
+                    f.startswith('gefs_') and 'obs' not in f.lower(),
+                    any(term in f for term in ['hour', 'day_of_year', 'month', 'station_', 'season_']),
+                    f.startswith('nbm_')
+                ])]
+            }
+        },
+        'data_preprocessing': {
+            'obs_columns_expected': ['tmax_obs', 'tmin_obs'],
+            'gefs_prefix': 'gefs_',
+            'nbm_prefix': 'nbm_',
+            'urma_prefix': 'urma_',
+            'urma_temp_conversion': 'K_to_C_minus_273.15',
+            'prohibited_features': {
+                'always_excluded': ['obs columns', 'season (non-numeric)'],
+                'target_specific': f"gefs_{target_config['forecast_col']}" if not INCLUDE_GEFS_AS_PREDICTOR else "none",
+                'cross_contamination': 'gefs_tmin_2m for tmax prediction, gefs_tmax_2m for tmin prediction'
+            }
+        },
+        'performance_metrics': {
+            key: {
+                'mae': float(metrics['mae']),
+                'rmse': float(metrics['rmse']),
+                'r2': float(metrics['r2']),
+                'bias': float(metrics['bias']),
+                'n_samples': int(metrics['n_samples'])
+            } for key, metrics in results.items()
+        },
+        'qc_stats': qc_stats if isinstance(qc_stats, dict) else {'error': str(qc_stats)}
+    }
+    
+    # Save metadata as JSON
+    with open(metadata_file_path, 'w') as f:
+        json.dump(metadata, f, indent=2, default=str)
+    
+    print(f"Metadata saved to: {metadata_file_path}")
+    
+    # Create a latest symlink/copy for easy access
+    latest_model_path = model_path / f"gefs_ml_model_{target_type}_latest.joblib"
+    latest_metadata_path = model_path / f"gefs_ml_metadata_{target_type}_latest.json"
+    
+    # Copy files to latest
+    import shutil
+    shutil.copy2(model_file_path, latest_model_path)
+    shutil.copy2(metadata_file_path, latest_metadata_path)
+    
+    print(f"Latest model available at: {latest_model_path}")
+    print(f"Latest metadata available at: {latest_metadata_path}")
+    
+    return {
+        'model_file': str(model_file_path),
+        'metadata_file': str(metadata_file_path),
+        'latest_model_file': str(latest_model_path),
+        'latest_metadata_file': str(latest_metadata_path)
+    }
+
+def load_model_and_metadata(model_file_path=None, metadata_file_path=None, target_type='tmax'):
+    """Load a saved model and its metadata."""
+    
+    if model_file_path is None:
+        model_file_path = Path('models') / f"gefs_ml_model_{target_type}_latest.joblib"
+    if metadata_file_path is None:
+        metadata_file_path = Path('models') / f"gefs_ml_metadata_{target_type}_latest.json"
+    
+    # Load model
+    model = joblib.load(model_file_path)
+    print(f"Model loaded from: {model_file_path}")
+    
+    # Load metadata
+    with open(metadata_file_path, 'r') as f:
+        metadata = json.load(f)
+    print(f"Metadata loaded from: {metadata_file_path}")
+    
+    return model, metadata
+
+def apply_model_to_new_data(model, metadata, new_forecast_df, new_nbm_df, new_urma_df=None):
+    """Apply a trained model to new data using the saved configuration."""
+    
+    print("=== APPLYING TRAINED MODEL TO NEW DATA ===")
+    
+    # Extract configuration from metadata
+    target_config = metadata['target_config']
+    selected_features = metadata['features']['selected_features']
+    training_config = metadata['training_config']
+    
+    print(f"Target: {target_config['description']} ({target_config['target_type']})")
+    print(f"Using {len(selected_features)} features from training")
+    
+    # Apply same preprocessing as training
+    print("Applying preprocessing...")
+    
+    # Prepare forecast data (same as training)
+    forecast_cols = list(new_forecast_df.columns)
+    obs_columns = ['tmax_obs', 'tmin_obs']
+    gefs_atmos_cols = [col for col in forecast_cols if col not in obs_columns]
+    gefs_obs_cols = [col for col in forecast_cols if col in obs_columns]
+    
+    # Split and add prefixes
+    forecast_atmos = new_forecast_df[gefs_atmos_cols]
+    forecast_obs = new_forecast_df[gefs_obs_cols] if gefs_obs_cols else pd.DataFrame()
+    
+    forecast_atmos.columns = ['gefs_' + col for col in forecast_atmos.columns]
+    forecast_obs.columns = ['gefs_' + col for col in forecast_obs.columns] if not forecast_obs.empty else []
+    
+    forecast_processed = pd.concat([forecast_atmos, forecast_obs], axis=1)
+    
+    # Process NBM data
+    nbm_cols = [target_config['forecast_col'], target_config['obs_col']]
+    nbm_processed = new_nbm_df[nbm_cols] if all(col in new_nbm_df.columns for col in nbm_cols) else new_nbm_df
+    nbm_processed.columns = ['nbm_' + col for col in nbm_processed.columns]
+    
+    # Combine forecast and NBM data
+    combined_df = pd.concat([forecast_processed, nbm_processed], axis=1)
+    
+    # Apply feature engineering (simplified version)
+    if not combined_df.index.names or 'valid_datetime' not in combined_df.index.names:
+        if 'valid_datetime' in combined_df.columns:
+            combined_df = combined_df.set_index('valid_datetime')
+    
+    # Add time-based features
+    if isinstance(combined_df.index, pd.DatetimeIndex):
+        combined_df['hour'] = combined_df.index.hour
+        combined_df['day_of_year'] = combined_df.index.dayofyear
+        combined_df['month'] = combined_df.index.month
+    elif 'valid_datetime' in combined_df.columns:
+        combined_df['hour'] = pd.to_datetime(combined_df['valid_datetime']).dt.hour
+        combined_df['day_of_year'] = pd.to_datetime(combined_df['valid_datetime']).dt.dayofyear
+        combined_df['month'] = pd.to_datetime(combined_df['valid_datetime']).dt.month
+    
+    # Select only the features used in training
+    available_features = [f for f in selected_features if f in combined_df.columns]
+    missing_features = [f for f in selected_features if f not in combined_df.columns]
+    
+    if missing_features:
+        print(f"Warning: Missing {len(missing_features)} features from training: {missing_features[:5]}{'...' if len(missing_features) > 5 else ''}")
+    
+    print(f"Using {len(available_features)} of {len(selected_features)} features")
+    
+    # Make predictions
+    X_new = combined_df[available_features].select_dtypes(include=[np.number])
+    predictions = model.predict(X_new)
+    
+    # Create results DataFrame
+    results_df = pd.DataFrame({
+        'predicted': predictions,
+        'model_target': target_config['target_type']
+    }, index=X_new.index)
+    
+    # Add NBM baseline if available
+    nbm_col = 'nbm_' + target_config['forecast_col']
+    if nbm_col in combined_df.columns:
+        results_df['nbm_baseline'] = combined_df[nbm_col]
+    
+    print(f"Generated {len(predictions)} predictions")
+    return results_df, {
+        'features_used': available_features,
+        'features_missing': missing_features,
+        'model_metadata': metadata
+    }
 
 # =============================================================================
 # TARGET VARIABLE CONFIGURATION
@@ -89,10 +315,58 @@ def get_target_config(target_type=None):
 # DATA LOADING FUNCTIONS
 # =============================================================================
 
+def discover_available_stations():
+    """Discover all available stations by scanning the forecast directory."""
+    import random
+    
+    available_stations = set()
+    
+    # Scan forecast directory for available stations
+    for fhour in FORECAST_HOURS:
+        data_dir = Path(BASE_PATH) / 'forecast' / fhour
+        if data_dir.exists():
+            for file_path in data_dir.glob("*_2020_2025_*.csv"):
+                # Extract station ID from filename (e.g., "KSLC_2020_2025_f024.csv" -> "KSLC")
+                station_id = file_path.stem.split('_')[0]
+                available_stations.add(station_id)
+    
+    available_stations = sorted(list(available_stations))
+    print(f"Found {len(available_stations)} available stations: {available_stations[:10]}{'...' if len(available_stations) > 10 else ''}")
+    
+    return available_stations
+
+def select_stations():
+    """Select stations based on configuration."""
+    import random
+    
+    if USE_ALL_AVAILABLE_STATIONS:
+        print("=== DISCOVERING AVAILABLE STATIONS ===")
+        available_stations = discover_available_stations()
+        
+        if len(available_stations) <= MAX_STATIONS:
+            selected_stations = available_stations
+            print(f"Using all {len(selected_stations)} available stations")
+        else:
+            # Randomly select stations for reproducibility
+            random.seed(RANDOM_STATION_SEED)
+            selected_stations = random.sample(available_stations, MAX_STATIONS)
+            selected_stations.sort()  # Sort for consistent ordering
+            print(f"Randomly selected {len(selected_stations)} stations from {len(available_stations)} available")
+            print(f"Random seed used: {RANDOM_STATION_SEED}")
+        
+        print(f"Selected stations: {selected_stations}")
+        return selected_stations
+    else:
+        print(f"Using predefined station list: {STATION_IDS}")
+        return STATION_IDS
+
 def load_combined_data():
     """Load and combine forecast, NBM, and URMA data."""
     print(f"Loading data from: {BASE_PATH}")
-    print(f"Station IDs: {STATION_IDS}")
+    
+    # Select stations based on configuration
+    station_ids = select_stations()
+    
     print(f"Forecast hours: {FORECAST_HOURS}")
     
     forecast_dfs = []
@@ -102,7 +376,7 @@ def load_combined_data():
     for data_type in ['forecast', 'nbm']:
         for fhour in FORECAST_HOURS:
             data_dir = Path(BASE_PATH) / data_type / fhour
-            for station_id in STATION_IDS:
+            for station_id in station_ids:
                 # Updated file path format to match actual naming convention
                 file_path = data_dir / f"{station_id}_2020_2025_{fhour}.csv"
                 if file_path.exists():
@@ -132,7 +406,7 @@ def load_combined_data():
     urma_path = Path(BASE_PATH) / 'urma' / 'WR_2020_2025.urma.parquet'
     print(f"Loading URMA data from: {urma_path}")
     urma_df = pd.read_parquet(urma_path, engine='pyarrow')
-    urma_df = urma_df.loc[urma_df.index.get_level_values(1).isin(STATION_IDS)]
+    urma_df = urma_df.loc[urma_df.index.get_level_values(1).isin(station_ids)]
     
     print(f"Loaded forecast data: {forecast_df.shape}")
     print(f"Loaded NBM data: {nbm_df.shape}")
@@ -369,19 +643,54 @@ def prepare_ml_data(time_matched_qc, target_config):
     # Set index back
     df = df.set_index(['valid_datetime', 'sid'])
     
-    # Select features based on configuration - INCLUDE ALL GEFS ATMOSPHERIC VARIABLES
+    # Define prohibited GEFS features based on target variable to prevent data leakage
+    prohibited_gefs_features = []
+    
+    # Always exclude the target variable's direct GEFS forecast unless explicitly allowed
+    if not INCLUDE_GEFS_AS_PREDICTOR:
+        if target_config['target_type'] == 'tmax':
+            prohibited_gefs_features.append('gefs_tmax_2m')
+        elif target_config['target_type'] == 'tmin':
+            prohibited_gefs_features.append('gefs_tmin_2m')
+    
+    # Prevent cross-contamination: don't use tmin to predict tmax and vice versa
+    if target_config['target_type'] == 'tmax':
+        prohibited_gefs_features.append('gefs_tmin_2m')  # Don't use tmin to predict tmax
+    elif target_config['target_type'] == 'tmin':
+        prohibited_gefs_features.append('gefs_tmax_2m')  # Don't use tmax to predict tmin
+    
+    print(f"Prohibited GEFS features for {target_config['target_type']} prediction: {prohibited_gefs_features}")
+    
+    # Select features based on configuration
     if INCLUDE_NBM_AS_PREDICTOR:
-        # Include all features except observation columns and non-numeric
-        feature_cols = [col for col in df.columns if 'obs' not in col.lower() and col != 'season']
+        # Include all features except observation columns, prohibited features, and non-numeric
+        feature_cols = [col for col in df.columns 
+                       if 'obs' not in col.lower() 
+                       and col != 'season'
+                       and col not in prohibited_gefs_features]
         print(f"  - Including NBM forecasts as predictors")
     else:
-        # Include ALL GEFS atmospheric variables plus engineered features
-        gefs_atmos_cols = [col for col in df.columns if col.startswith('gefs_') and 'obs' not in col.lower()]
+        # Include GEFS atmospheric variables (excluding prohibited ones) plus engineered features
+        gefs_atmos_cols = [col for col in df.columns 
+                          if col.startswith('gefs_') 
+                          and 'obs' not in col.lower()
+                          and col not in prohibited_gefs_features]
         engineered_cols = [col for col in df.columns if any(term in col for term in ['hour', 'day_of_year', 'month', 'station_', 'season_'])]
         feature_cols = gefs_atmos_cols + engineered_cols
-        print(f"  - Including ALL {len(gefs_atmos_cols)} GEFS atmospheric variables as features")
+        print(f"  - Including {len(gefs_atmos_cols)} GEFS atmospheric variables as features")
         print(f"  - Plus {len(engineered_cols)} engineered features")
         print(f"  - Excluding NBM forecasts as predictors (baseline comparison only)")
+        if not INCLUDE_GEFS_AS_PREDICTOR:
+            print(f"  - Excluding GEFS target forecast (gefs_{target_config['forecast_col']}) for independent prediction")
+    
+    # Final feature validation
+    available_features = [col for col in feature_cols if col in df.columns]
+    excluded_features = [col for col in feature_cols if col not in df.columns]
+    
+    if excluded_features:
+        print(f"  - Warning: Excluded {len(excluded_features)} unavailable features: {excluded_features[:5]}{'...' if len(excluded_features) > 5 else ''}")
+    
+    feature_cols = available_features
     
     # Check if target column exists
     if target_col not in df.columns:
@@ -1083,6 +1392,7 @@ def main():
     target_config = get_target_config()
     print(f"Target: {target_config['description']} ({target_config['target_type']})")
     print(f"NBM as predictor: {'Yes' if INCLUDE_NBM_AS_PREDICTOR else 'No (baseline only)'}")
+    print(f"GEFS target forecast as predictor: {'Yes' if INCLUDE_GEFS_AS_PREDICTOR else 'No (independent prediction)'}")
     
     # Load data
     print("\n=== LOADING DATA ===")
@@ -1175,6 +1485,10 @@ def main():
     # Print summary
     print_results_summary(results, qc_stats, target_config)
     
+    # Export model and metadata for future use
+    print("\n=== EXPORTING MODEL ===")
+    export_info = save_model_and_metadata(model, selected_features, target_config, results, qc_stats)
+    
     print("\n=== PIPELINE COMPLETED ===")
     
     return {
@@ -1182,7 +1496,9 @@ def main():
         'results': results,
         'predictions': predictions,
         'qc_stats': qc_stats,
-        'target_config': target_config
+        'target_config': target_config,
+        'selected_features': selected_features,
+        'export_info': export_info
     }
 
 if __name__ == "__main__":
