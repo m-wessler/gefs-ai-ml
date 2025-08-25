@@ -1,9 +1,11 @@
-/csv
-/results_*
-*.csv
-*.json
-*.parquet
 __pycache__/
 *.py[cod]
 *$py.class
+/csv
+/results*
+*.csv
+*.json
+*.parquet
 *.png
+*.tar
+*.gz
