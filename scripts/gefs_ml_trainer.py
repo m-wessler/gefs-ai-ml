@@ -30,6 +30,7 @@ from pathlib import Path
 from datetime import timedelta, datetime
 import json
 import joblib
+import os
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor, VotingRegressor
 from sklearn.linear_model import Ridge, Lasso
 from sklearn.svm import SVR
@@ -38,26 +39,93 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 import warnings
 warnings.filterwarnings('ignore')
 
+# Try to import GPU-accelerated libraries
+try:
+    import cuml
+    from cuml.ensemble import RandomForestRegressor as cuMLRandomForestRegressor
+    CUML_AVAILABLE = True
+    print("cuML (GPU) support detected")
+except ImportError:
+    CUML_AVAILABLE = False
+    print("cuML not available - using CPU-only algorithms")
+
+try:
+    import xgboost as xgb
+    XGBOOST_AVAILABLE = True
+    print("XGBoost support detected")
+except ImportError:
+    XGBOOST_AVAILABLE = False
+    print("XGBoost not available")
+
+# Set optimal CPU parallelization
+try:
+    import multiprocessing
+    N_JOBS = min(multiprocessing.cpu_count(), 16)  # Cap at 16 for memory reasons
+    os.environ['OMP_NUM_THREADS'] = str(N_JOBS)
+    os.environ['MKL_NUM_THREADS'] = str(N_JOBS)
+    print(f"Using {N_JOBS} CPU cores for parallel processing")
+except:
+    N_JOBS = -1
+    print("Using all available CPU cores")
+
 # =============================================================================
 # CONFIGURATION SECTION
 # =============================================================================
 
 BASE_PATH = "N:/data/gefs-ml/"
-STATION_IDS = ['KSLC', 'KBOI', 'KLAS', 'KSEA', 'KLAX']
-USE_ALL_AVAILABLE_STATIONS = True  # Set to True to use all available stations instead of STATION_IDS
+# BASE_PATH = '/nas/stid/data/gefs-ml/'
+
+OUTPUT_PATH = "N:/projects/michael.wessler/gefs-ai-ml/"
+
+USE_ALL_AVAILABLE_STATIONS = False  # Set to True to use all available stations instead of STATION_IDS
 MAX_STATIONS = 500  # Maximum number of stations to use when USE_ALL_AVAILABLE_STATIONS is True
 RANDOM_STATION_SEED = 42  # Random seed for reproducible station selection
-FORECAST_HOURS = ['f024']
+STATION_IDS = ['KSLC', 'KBOI', 'KSGU', 'KPIH'] #['KSLC', 'KBOI', 'KLAS', 'KSEA', 'KLAX']
+
+FORECAST_HOURS = ['f006', 'f012', 'f018', 'f024']
 QC_THRESHOLD = 2.5  # Maximum allowed deviation between URMA and station obs in °C
 TARGET_VARIABLE = 'tmax'  # 'tmax' or 'tmin'
 
-USE_HYPERPARAMETER_TUNING = True  # Set to True for better performance but slower training
+USE_HYPERPARAMETER_TUNING = False  # Set to True for better performance but slower training
 USE_VALIDATION_BASED_TRAINING = True  # Use validation set to prevent overfitting
 USE_ENSEMBLE_MODELS = False  # Use multiple models and ensemble them
+PREVENT_OVERFITTING = False  # Use aggressive regularization to prevent overfitting
 
 USE_FEATURE_SELECTION = True  # Apply feature selection to reduce overfitting
 INCLUDE_NBM_AS_PREDICTOR = False  # Include NBM forecasts as input features (vs baseline only)
 INCLUDE_GEFS_AS_PREDICTOR = True  # Include GEFS forecast of target variable as predictor (True = less independent)
+
+# Forecast hour aggregation method when using multiple forecast hours
+# 'separate': Keep each forecast hour as separate training examples (more data)
+# 'ensemble': Average forecasts from multiple hours for same verification time
+# 'best_lead': Use only forecast closest to 24h lead time
+FORECAST_HOUR_AGGREGATION = 'separate'  # Options: 'separate', 'ensemble', 'best_lead'
+
+USE_GPU_ACCELERATION = False  # Use GPU acceleration when available (cuML, XGBoost GPU)
+PREFER_GPU_MODELS = False  # Prefer GPU models over CPU even if slightly different algorithms
+
+# =============================================================================
+# UTILITY FUNCTIONS
+# =============================================================================
+
+def generate_timestamp():
+    """Generate timestamp string for file naming."""
+    return datetime.now().strftime('%Y%m%d_%H%M%S')
+
+def generate_config_info():
+    """Generate configuration info string for plot titles."""
+    # Forecast hours info
+    fhours_str = f"FHours: {', '.join(FORECAST_HOURS)}"
+    
+    # Stations info
+    if USE_ALL_AVAILABLE_STATIONS:
+        # We need to get the actual number of stations used
+        # This will be set in main() after station selection
+        stations_str = f"Stations: {getattr(generate_config_info, 'station_count', 'All Available')}"
+    else:
+        stations_str = f"Stations: {', '.join(STATION_IDS)}"
+    
+    return f"{fhours_str} | {stations_str}"
 
 # =============================================================================
 # MODEL EXPORT/IMPORT FUNCTIONS
@@ -67,7 +135,7 @@ def save_model_and_metadata(model, selected_features, target_config, results, qc
     """Save trained model and all metadata needed for future predictions."""
     
     # Create models directory
-    model_path = Path(model_dir)
+    model_path = Path(OUTPUT_PATH) / model_dir
     model_path.mkdir(exist_ok=True)
     
     # Create timestamp for unique naming
@@ -107,7 +175,8 @@ def save_model_and_metadata(model, selected_features, target_config, results, qc
             'INCLUDE_GEFS_AS_PREDICTOR': INCLUDE_GEFS_AS_PREDICTOR,
             'USE_ALL_AVAILABLE_STATIONS': USE_ALL_AVAILABLE_STATIONS,
             'MAX_STATIONS': MAX_STATIONS,
-            'RANDOM_STATION_SEED': RANDOM_STATION_SEED
+            'RANDOM_STATION_SEED': RANDOM_STATION_SEED,
+            'FORECAST_HOUR_AGGREGATION': FORECAST_HOUR_AGGREGATION
         },
         'target_config': target_config,
         'features': {
@@ -177,9 +246,9 @@ def load_model_and_metadata(model_file_path=None, metadata_file_path=None, targe
     """Load a saved model and its metadata."""
     
     if model_file_path is None:
-        model_file_path = Path('models') / f"gefs_ml_model_{target_type}_latest.joblib"
+        model_file_path = Path(OUTPUT_PATH) / 'models' / f"gefs_ml_model_{target_type}_latest.joblib"
     if metadata_file_path is None:
-        metadata_file_path = Path('models') / f"gefs_ml_metadata_{target_type}_latest.json"
+        metadata_file_path = Path(OUTPUT_PATH) / 'models' / f"gefs_ml_metadata_{target_type}_latest.json"
     
     # Load model
     model = joblib.load(model_file_path)
@@ -312,6 +381,56 @@ def get_target_config(target_type=None):
         raise ValueError(f"Target type '{target_type}' not supported. Use 'tmax' or 'tmin'.")
 
 # =============================================================================
+# GPU MODEL CREATION FUNCTIONS
+# =============================================================================
+
+def create_gpu_random_forest(n_estimators=100):
+    """Create GPU-accelerated Random Forest if available, fallback to CPU"""
+    if USE_GPU_ACCELERATION and CUML_AVAILABLE:
+        try:
+            print("Creating GPU Random Forest using cuML...")
+            from cuml.ensemble import RandomForestRegressor as GPURandomForest
+            return GPURandomForest(
+                n_estimators=n_estimators,
+                random_state=42,
+                n_streams=1  # Use single stream for stability
+            )
+        except Exception as e:
+            print(f"GPU Random Forest creation failed: {e}")
+            print("Falling back to CPU Random Forest...")
+    
+    # CPU fallback
+    return RandomForestRegressor(
+        n_estimators=n_estimators,
+        random_state=42,
+        n_jobs=N_JOBS
+    )
+
+def create_gpu_xgboost(n_estimators=100):
+    """Create GPU-accelerated XGBoost if available, fallback to CPU"""
+    if USE_GPU_ACCELERATION and XGBOOST_AVAILABLE:
+        try:
+            print("Creating GPU XGBoost...")
+            return XGBRegressor(
+                n_estimators=n_estimators,
+                random_state=42,
+                tree_method='gpu_hist',
+                gpu_id=0,
+                eval_metric='rmse'
+            )
+        except Exception as e:
+            print(f"GPU XGBoost creation failed: {e}")
+            print("Falling back to CPU XGBoost...")
+    
+    # CPU fallback
+    return XGBRegressor(
+        n_estimators=n_estimators,
+        random_state=42,
+        n_jobs=N_JOBS,
+        eval_metric='rmse'
+    )
+
+# =============================================================================
 # DATA LOADING FUNCTIONS
 # =============================================================================
 
@@ -367,10 +486,17 @@ def load_combined_data():
     # Select stations based on configuration
     station_ids = select_stations()
     
+    # Store station count for plot titles
+    generate_config_info.station_count = len(station_ids)
+    
     print(f"Forecast hours: {FORECAST_HOURS}")
     
     forecast_dfs = []
     nbm_dfs = []
+    
+    # Track missing files for reporting
+    missing_forecast = []
+    missing_nbm = []
 
     # Load forecast and NBM data
     for data_type in ['forecast', 'nbm']:
@@ -387,7 +513,16 @@ def load_combined_data():
                     else:
                         nbm_dfs.append(df)
                 else:
-                    print(f"Warning: File not found: {file_path}")
+                    if data_type == 'forecast':
+                        missing_forecast.append(f"{station_id}_{fhour}")
+                    else:
+                        missing_nbm.append(f"{station_id}_{fhour}")
+    
+    # Report missing files
+    if missing_forecast:
+        print(f"Warning: {len(missing_forecast)} forecast files missing")
+    if missing_nbm:
+        print(f"Info: {len(missing_nbm)} NBM files missing (NBM stats will use available data only)")
 
     # Combine DataFrames
     forecast_df = pd.concat(forecast_dfs, ignore_index=True) if forecast_dfs else pd.DataFrame()
@@ -415,13 +550,28 @@ def load_combined_data():
     return forecast_df, nbm_df, urma_df
 
 def create_time_matched_dataset(forecast_subset, nbm_subset, urma_subset):
-    """Create time-matched dataset with 12-hour window matching."""
+    """
+    Create time-matched dataset with improved handling of multiple forecast hours.
+    
+    Key improvements:
+    1. Ensures proper NBM-GEFS alignment by forecast time
+    2. Adds forecast lead time information
+    3. Better handling of multiple forecast hours per verification
+    """
     urma_times = urma_subset.index.get_level_values('valid_datetime').unique()
     stations = urma_subset.index.get_level_values('sid').unique()
     matched_data = []
 
-    print("Creating time-matched dataset...")
+    print("Creating improved time-matched dataset...")
+    print(f"Processing {len(urma_times)} URMA times for {len(stations)} stations")
+    
+    # Track alignment statistics
+    total_matches = 0
+    total_urma_obs = 0
+    forecast_hour_counts = {}
+    
     for urma_time in urma_times:
+        total_urma_obs += len(stations)
         window_start = urma_time - timedelta(hours=12)
         window_end = urma_time
 
@@ -452,33 +602,198 @@ def create_time_matched_dataset(forecast_subset, nbm_subset, urma_subset):
             )
             nbm_matches = nbm_subset[nbm_mask]
 
-            # Combine matches
-            for (valid_dt, sid), forecast_row in forecast_matches.iterrows():
+            # IMPROVEMENT: Group by forecast valid time to ensure proper alignment
+            forecast_times = forecast_matches.index.get_level_values('valid_datetime').unique()
+            
+            for forecast_time in forecast_times:
+                # Get forecast data for this specific time
                 try:
-                    nbm_row = nbm_matches.loc[(valid_dt, sid)]
-                    if isinstance(nbm_row, pd.DataFrame):
-                        nbm_row = nbm_row.iloc[0]
-                    
-                    combined_row = {
-                        'urma_valid_datetime': urma_time,
-                        'valid_datetime': valid_dt,
-                        'sid': sid
-                    }
-                    combined_row.update(forecast_row.to_dict())
-                    combined_row.update(nbm_row.to_dict())
-                    combined_row.update(urma_data)
-                    matched_data.append(combined_row)
+                    forecast_row = forecast_matches.loc[(forecast_time, station)]
+                    if isinstance(forecast_row, pd.DataFrame):
+                        forecast_row = forecast_row.iloc[0]
                 except KeyError:
                     continue
+                
+                # Find corresponding NBM data for the same forecast time
+                try:
+                    nbm_row = nbm_matches.loc[(forecast_time, station)]
+                    if isinstance(nbm_row, pd.DataFrame):
+                        nbm_row = nbm_row.iloc[0]
+                except KeyError:
+                    # If no exact NBM match, skip this forecast
+                    continue
+                
+                # Create combined row with proper alignment
+                combined_row = {
+                    'urma_valid_datetime': urma_time,
+                    'valid_datetime': forecast_time,
+                    'sid': station,
+                    'forecast_lead_hours': (forecast_time - urma_time).total_seconds() / 3600  # Add lead time info
+                }
+                combined_row.update(forecast_row.to_dict())
+                combined_row.update(nbm_row.to_dict())
+                combined_row.update(urma_data)
+                matched_data.append(combined_row)
+                total_matches += 1
+                
+                # Track forecast hour distribution
+                lead_hours = combined_row['forecast_lead_hours']
+                forecast_hour_counts[lead_hours] = forecast_hour_counts.get(lead_hours, 0) + 1
 
     if matched_data:
         result_df = pd.DataFrame(matched_data)
         result_df = result_df.set_index(['urma_valid_datetime', 'valid_datetime', 'sid'])
-        print(f"Created time-matched dataset with {len(result_df)} records")
+        
+        print(f"Created improved time-matched dataset:")
+        print(f"  Total records: {len(result_df)}")
+        print(f"  Match rate: {total_matches/total_urma_obs:.2%}")
+        print(f"  Forecast hour distribution: {forecast_hour_counts}")
+        
         return result_df
     else:
         print("Warning: No time-matched data created")
         return pd.DataFrame()
+
+def verify_data_alignment(df, target_config):
+    """Enhanced verification that checks forecast hour alignment specifically."""
+    print("\n=== IMPROVED DATA ALIGNMENT VERIFICATION ===")
+    
+    # Get the key columns
+    gefs_col = 'gefs_' + target_config['forecast_col']
+    nbm_col = 'nbm_' + target_config['forecast_col'] 
+    urma_col = target_config['urma_obs_col']
+    
+    # Check if columns exist
+    missing_cols = []
+    for col in [gefs_col, nbm_col, urma_col]:
+        if col not in df.columns:
+            missing_cols.append(col)
+    
+    if missing_cols:
+        print(f"Warning: Missing columns: {missing_cols}")
+        return
+    
+    # Enhanced sample verification with forecast lead time info
+    print("Sample alignment check with forecast lead times:")
+    print("Format: URMA_time | Forecast_time | Lead_hrs | Station | GEFS | NBM | URMA")
+    
+    sample_df = df.head(10).copy()
+    for i, (idx, row) in enumerate(sample_df.iterrows()):
+        if i >= 5:
+            break
+        urma_time, valid_time, station = idx
+        lead_hours = row.get('forecast_lead_hours', 'N/A')
+        gefs_val = row.get(gefs_col, 'N/A')
+        nbm_val = row.get(nbm_col, 'N/A')
+        urma_val = row.get(urma_col, 'N/A')
+        
+        print(f"{i+1:2d}: {urma_time.strftime('%Y-%m-%d %H:%M')} | "
+              f"{valid_time.strftime('%Y-%m-%d %H:%M')} | "
+              f"{lead_hours:6.1f} | {station} | "
+              f"GEFS: {gefs_val:6.1f} | NBM: {nbm_val:6.1f} | URMA: {urma_val:6.1f}")
+    
+    # Check forecast hour distribution
+    if 'forecast_lead_hours' in df.columns:
+        lead_hour_counts = df['forecast_lead_hours'].value_counts().sort_index()
+        print(f"\nForecast lead hour distribution:")
+        for lead_hour, count in lead_hour_counts.items():
+            print(f"  {lead_hour:6.1f} hours: {count:6d} records")
+    
+    # Check for alignment by forecast hour
+    print("\nAlignment verification by forecast hour:")
+    if 'forecast_lead_hours' in df.columns:
+        for lead_hour in df['forecast_lead_hours'].unique():
+            subset = df[df['forecast_lead_hours'] == lead_hour]
+            if len(subset) > 10:  # Only check if sufficient data
+                correlation = subset[gefs_col].corr(subset[nbm_col])
+                print(f"  {lead_hour:6.1f}h: GEFS-NBM correlation = {correlation:.3f} ({len(subset)} samples)")
+                
+                if correlation < 0.8:
+                    print(f"    WARNING: Low correlation at {lead_hour}h suggests alignment issues!")
+    
+    # Overall data quality checks
+    print("\nOverall Data Quality Checks:")
+    
+    # Check for missing data patterns
+    gefs_missing = df[gefs_col].isna().sum()
+    nbm_missing = df[nbm_col].isna().sum()
+    urma_missing = df[urma_col].isna().sum()
+    
+    print(f"Missing data - GEFS: {gefs_missing}, NBM: {nbm_missing}, URMA: {urma_missing}")
+    
+    # Check for duplicate forecast times per URMA time/station
+    duplicates = df.reset_index().groupby(['urma_valid_datetime', 'sid']).size()
+    max_forecasts_per_obs = duplicates.max()
+    avg_forecasts_per_obs = duplicates.mean()
+    
+    print(f"Forecasts per observation - Max: {max_forecasts_per_obs}, Avg: {avg_forecasts_per_obs:.1f}")
+    
+    # Overall correlation check
+    if not df[gefs_col].isna().all() and not df[nbm_col].isna().all():
+        overall_correlation = df[gefs_col].corr(df[nbm_col])
+        print(f"Overall GEFS-NBM correlation: {overall_correlation:.3f}")
+        
+        if overall_correlation < 0.8:
+            print("WARNING: Overall low GEFS-NBM correlation suggests systematic alignment issues!")
+    
+    print("=== END IMPROVED VERIFICATION ===\n")
+
+def aggregate_forecast_hours_for_evaluation(df, method='separate'):
+    """
+    Handle aggregation of multiple forecast hours for the same URMA observation.
+    
+    Parameters:
+    - df: DataFrame with multiple forecast hours per URMA time
+    - method: 'ensemble' (average), 'best_lead' (closest to 24h), or 'separate' (keep separate)
+    """
+    if method == 'separate':
+        # Keep forecast hours separate - this maintains more training data
+        print("Keeping forecast hours separate (more training data)")
+        return df
+    
+    elif method == 'ensemble':
+        # Average multiple forecast hours for the same URMA observation
+        print("Aggregating forecast hours using ensemble averaging...")
+        
+        # Group by URMA time and station, average the forecasts
+        groupby_cols = ['urma_valid_datetime', 'sid']
+        agg_dict = {}
+        
+        for col in df.columns:
+            if col not in groupby_cols:
+                # For numeric columns, take mean; for others, take first
+                if df[col].dtype in ['float64', 'int64', 'float32', 'int32']:
+                    agg_dict[col] = 'mean'
+                else:
+                    agg_dict[col] = 'first'
+        
+        aggregated = df.reset_index().groupby(groupby_cols).agg(agg_dict).reset_index()
+        
+        # Set new index
+        aggregated = aggregated.set_index(['urma_valid_datetime', 'sid'])
+        print(f"Aggregated from {len(df)} to {len(aggregated)} records")
+        return aggregated
+    
+    elif method == 'best_lead':
+        # Keep only the forecast hour closest to 24 hours (optimal lead time)
+        print("Selecting best lead time forecasts (closest to 24h)...")
+        
+        if 'forecast_lead_hours' in df.columns:
+            # Find forecast closest to 24 hours for each URMA observation
+            def select_best_lead(group):
+                target_lead = 24.0  # Target 24-hour lead time
+                best_idx = (group['forecast_lead_hours'] - target_lead).abs().idxmin()
+                return group.loc[best_idx]
+            
+            best_forecasts = df.groupby(['urma_valid_datetime', 'sid']).apply(select_best_lead)
+            print(f"Selected best lead times from {len(df)} to {len(best_forecasts)} records")
+            return best_forecasts
+        else:
+            print("Warning: No forecast_lead_hours column found, returning original data")
+            return df
+    
+    else:
+        raise ValueError(f"Unknown aggregation method: {method}")
 
 def apply_qc_filter(df, target_config):
     """Apply URMA quality control filter."""
@@ -639,6 +954,28 @@ def prepare_ml_data(time_matched_qc, target_config):
         if gefs_col in df.columns:
             df['gefs_bias'] = df[gefs_col] - df[urma_obs_col]
         print("  - Added bias correction features")
+    
+    # 7. Advanced atmospheric features
+    if 'gefs_tmp_2m' in df.columns and 'gefs_tmp_pres_850' in df.columns:
+        df['temp_gradient_sfc_850'] = df['gefs_tmp_2m'] - df['gefs_tmp_pres_850']
+        print("  - Added temperature gradient features")
+    
+    if 'gefs_dswrf_sfc' in df.columns and 'gefs_tcdc_eatm' in df.columns:
+        df['solar_cloud_interaction'] = df['gefs_dswrf_sfc'] * (1 - df['gefs_tcdc_eatm'] / 100)
+        print("  - Added solar-cloud interaction features")
+    
+    if 'gefs_ugrd_hgt' in df.columns and 'gefs_vgrd_hgt' in df.columns:
+        df['wind_speed'] = np.sqrt(df['gefs_ugrd_hgt']**2 + df['gefs_vgrd_hgt']**2)
+        df['wind_direction'] = np.arctan2(df['gefs_vgrd_hgt'], df['gefs_ugrd_hgt'])
+        print("  - Added wind speed and direction features")
+    
+    # 8. Forecast error variance features (if NBM included)
+    if INCLUDE_NBM_AS_PREDICTOR and gefs_col in df.columns and nbm_col in df.columns:
+        # Rolling standard deviation of forecast differences as uncertainty measure
+        df_sorted = df.sort_index()
+        df_sorted['forecast_uncertainty'] = df_sorted.groupby('sid')['gefs_nbm_diff'].rolling(window=5, min_periods=1).std().values
+        df['forecast_uncertainty'] = df_sorted['forecast_uncertainty']
+        print("  - Added forecast uncertainty features")
     
     # Set index back
     df = df.set_index(['valid_datetime', 'sid'])
@@ -869,27 +1206,43 @@ def train_model_with_validation(splits, use_tuning=False):
     X_val_clean = splits['X_val'][val_mask]
     y_val_clean = splits['y_val'][val_mask]
     
-    # Test different n_estimators to find optimal stopping point
-    n_estimators_range = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+    # Test different n_estimators to find optimal stopping point with early stopping
+    n_estimators_range = list(range(10, 201, 10))  # Extended range up to 200
     val_scores = []
+    best_score = float('inf')
+    patience = 10
+    no_improvement = 0
     
-    print("Finding optimal number of estimators...")
+    print("Finding optimal number of estimators with early stopping...")
     for n_est in n_estimators_range:
         model = RandomForestRegressor(
             n_estimators=n_est,
-            max_depth=10,
-            min_samples_split=10,
-            min_samples_leaf=5,
+            max_depth=6,  # Reduced from 10
+            min_samples_split=20,  # Increased from 10
+            min_samples_leaf=10,  # Increased from 5
             max_features='sqrt',
             bootstrap=True,
             random_state=42,
-            n_jobs=-1
+            n_jobs=N_JOBS
         )
         model.fit(X_train_clean, y_train_clean)
         val_pred = model.predict(X_val_clean)
         val_score = mean_squared_error(y_val_clean, val_pred)
         val_scores.append(val_score)
         print(f"n_estimators={n_est}, val_mse={val_score:.3f}")
+        
+        # Early stopping logic
+        if val_score < best_score:
+            best_score = val_score
+            no_improvement = 0
+        else:
+            no_improvement += 1
+            
+        if no_improvement >= patience:
+            print(f"Early stopping at n_estimators={n_est} (no improvement for {patience} iterations)")
+            # Truncate ranges to actual tested values
+            n_estimators_range = n_estimators_range[:len(val_scores)]
+            break
     
     # Find optimal n_estimators
     optimal_idx = np.argmin(val_scores)
@@ -965,18 +1318,45 @@ def train_ensemble_models(splits, use_tuning=False):
     print("Training ensemble of models...")
     
     # Define individual models with regularization
-    models = {
-        'RandomForest': RandomForestRegressor(
-            n_estimators=50, max_depth=10, min_samples_split=10,
-            min_samples_leaf=5, max_features='sqrt', random_state=42, n_jobs=-1
-        ),
-        'GradientBoosting': GradientBoostingRegressor(
-            n_estimators=50, max_depth=6, learning_rate=0.1,
-            min_samples_split=10, min_samples_leaf=5, random_state=42
-        ),
-        'Ridge': Ridge(alpha=1.0, random_state=42),
-        'Lasso': Lasso(alpha=0.1, random_state=42, max_iter=2000)
-    }
+    models = {}
+    
+    # Random Forest - GPU or CPU with configurable regularization
+    if USE_GPU_ACCELERATION and PREFER_GPU_MODELS:
+        models['RandomForest'] = create_gpu_random_forest(n_estimators=50)
+    else:
+        if PREVENT_OVERFITTING:
+            models['RandomForest'] = RandomForestRegressor(
+                n_estimators=100, max_depth=4, min_samples_split=50,
+                min_samples_leaf=20, max_features='sqrt', random_state=42, n_jobs=N_JOBS
+            )
+        else:
+            models['RandomForest'] = RandomForestRegressor(
+                n_estimators=100, max_depth=6, min_samples_split=20,
+                min_samples_leaf=10, max_features='sqrt', random_state=42, n_jobs=N_JOBS
+            )
+    
+    # Gradient Boosting - Add XGBoost GPU option
+    if USE_GPU_ACCELERATION and PREFER_GPU_MODELS and XGBOOST_AVAILABLE:
+        models['XGBoost'] = create_gpu_xgboost(n_estimators=50)
+    else:
+        if PREVENT_OVERFITTING:
+            models['GradientBoosting'] = GradientBoostingRegressor(
+                n_estimators=50, max_depth=3, learning_rate=0.03,
+                min_samples_split=50, min_samples_leaf=20, random_state=42
+            )
+        else:
+            models['GradientBoosting'] = GradientBoostingRegressor(
+                n_estimators=50, max_depth=4, learning_rate=0.05,
+                min_samples_split=20, min_samples_leaf=10, random_state=42
+            )
+    
+    # Linear models with configurable regularization
+    if PREVENT_OVERFITTING:
+        models['Ridge'] = Ridge(alpha=50.0, random_state=42)
+        models['Lasso'] = Lasso(alpha=5.0, random_state=42, max_iter=2000)
+    else:
+        models['Ridge'] = Ridge(alpha=10.0, random_state=42)
+        models['Lasso'] = Lasso(alpha=1.0, random_state=42, max_iter=2000)
     
     # Train individual models and evaluate on validation set
     trained_models = {}
@@ -1010,12 +1390,39 @@ def train_ensemble_models(splits, use_tuning=False):
     print(f"Ensemble trained on {len(y_train_clean)} samples")
     return ensemble, trained_models
 
+def calibrate_predictions(y_true, y_pred):
+    """Apply simple linear calibration to predictions."""
+    from sklearn.linear_model import LinearRegression
+    
+    # Fit a linear model to calibrate predictions
+    calibrator = LinearRegression()
+    calibrator.fit(y_pred.reshape(-1, 1), y_true)
+    
+    # Apply calibration
+    y_calibrated = calibrator.predict(y_pred.reshape(-1, 1))
+    
+    return y_calibrated, calibrator
+
 def evaluate_model(model, splits, df, target_config):
-    """Evaluate model performance on all splits."""
+    """Evaluate model performance on all splits with optional calibration."""
     results = {}
     predictions = {}
+    calibrator = None
     
     nbm_col = 'nbm_' + target_config['forecast_col']
+    
+    # First pass: get training predictions for calibration
+    X_train = splits['X_train']
+    y_train = splits['y_train']
+    mask_train = ~(X_train.isnull().any(axis=1) | y_train.isnull())
+    X_train_clean = X_train[mask_train]
+    y_train_clean = y_train[mask_train]
+    
+    if len(y_train_clean) > 0:
+        y_train_pred = model.predict(X_train_clean)
+        # Fit calibrator on training data
+        _, calibrator = calibrate_predictions(y_train_clean, y_train_pred)
+        print("  Fitted prediction calibrator on training data")
     
     for split_name in ['train', 'val', 'test']:
         X = splits[f'X_{split_name}']
@@ -1029,23 +1436,84 @@ def evaluate_model(model, splits, df, target_config):
         if len(y_clean) == 0:
             continue
             
-        # ML predictions
-        y_pred = model.predict(X_clean)
+        # ML predictions (raw)
+        y_pred_raw = model.predict(X_clean)
         
-        # NBM baseline predictions
-        nbm_pred = df.loc[y_clean.index, nbm_col].values
+        # Apply calibration for val and test sets
+        if calibrator is not None and split_name in ['val', 'test']:
+            y_pred = calibrator.predict(y_pred_raw.reshape(-1, 1))
+            print(f"  Applied calibration to {split_name} predictions")
+        else:
+            y_pred = y_pred_raw
         
-        # Calculate metrics
+        # NBM baseline predictions - handle partial availability
+        nbm_pred = None
+        nbm_metrics = None
+        
+        try:
+            # Check if NBM column exists in the dataframe
+            if nbm_col in df.columns:
+                # Get all available NBM data for this split
+                all_nbm_data = df[nbm_col].dropna()
+                
+                print(f"  NBM Debug - Column '{nbm_col}': {len(all_nbm_data)} non-null values in full dataset")
+                print(f"  NBM Debug - Y_clean has {len(y_clean)} samples with index range: {y_clean.index.min()} to {y_clean.index.max()}")
+                print(f"  NBM Debug - NBM data index range: {all_nbm_data.index.min()} to {all_nbm_data.index.max()}")
+                
+                if len(all_nbm_data) > 0:
+                    # Find intersection between cleaned indices and NBM indices
+                    available_indices = y_clean.index.intersection(all_nbm_data.index)
+                    
+                    print(f"  NBM Debug - Found {len(available_indices)} overlapping indices")
+                    
+                    if len(available_indices) > 0:
+                        # Get subset of data where both ML and NBM predictions exist
+                        y_clean_nbm = y_clean.loc[available_indices]
+                        y_pred_nbm = model.predict(X_clean.loc[available_indices])
+                        nbm_pred_subset = all_nbm_data.loc[available_indices].values
+                        
+                        # Debug: Check data ranges
+                        print(f"  NBM Debug - Y_true range: {y_clean_nbm.min():.2f} to {y_clean_nbm.max():.2f}")
+                        print(f"  NBM Debug - NBM pred range: {nbm_pred_subset.min():.2f} to {nbm_pred_subset.max():.2f}")
+                        print(f"  NBM Debug - NBM pred std: {nbm_pred_subset.std():.2f}")
+                        
+                        print(f"  NBM comparison: {len(available_indices)} samples available (out of {len(y_clean)} total)")
+                        
+                        # Calculate NBM metrics on available subset
+                        nbm_metrics = calculate_metrics(y_clean_nbm, nbm_pred_subset, f'NBM_{split_name}')
+                        
+                        # Create NBM prediction array aligned with y_clean
+                        nbm_pred = np.full(len(y_clean), np.nan)
+                        for i, idx in enumerate(y_clean.index):
+                            if idx in available_indices:
+                                loc_in_subset = list(available_indices).index(idx)
+                                nbm_pred[i] = nbm_pred_subset[loc_in_subset]
+                                
+                    else:
+                        print(f"  No overlapping indices between cleaned data and NBM data for {split_name}")
+                else:
+                    print(f"  No NBM data available in dataframe for {split_name}")
+            else:
+                print(f"  NBM column '{nbm_col}' not found in dataframe")
+                
+        except Exception as e:
+            print(f"  Error processing NBM data for {split_name}: {e}")
+            nbm_pred = None
+            nbm_metrics = None
+        
+        # Calculate ML metrics
         ml_metrics = calculate_metrics(y_clean, y_pred, f'ML_{split_name}')
-        nbm_metrics = calculate_metrics(y_clean, nbm_pred, f'NBM_{split_name}')
-        
         results[f'ML_{split_name}'] = ml_metrics
-        results[f'NBM_{split_name}'] = nbm_metrics
         
+        # Add NBM metrics if available
+        if nbm_metrics is not None:
+            results[f'NBM_{split_name}'] = nbm_metrics
+        
+        # Store predictions
         predictions[split_name] = {
             'y_true': y_clean,
             'y_ml': y_pred,
-            'y_nbm': nbm_pred
+            'y_nbm': nbm_pred  # May be None or contain NaN values
         }
     
     return results, predictions
@@ -1068,7 +1536,11 @@ def calculate_metrics(y_true, y_pred, model_name):
 def create_scatter_plot(results, predictions, target_config):
     """Create comprehensive scatter plot for all splits."""
     fig, axes = plt.subplots(2, 3, figsize=(18, 12))
-    fig.suptitle(f'Model Performance: {target_config["description"].title()}', fontsize=16)
+    
+    # Generate title with configuration info
+    config_info = generate_config_info()
+    title = f'Model Performance: {target_config["description"].title()}\n{config_info}'
+    fig.suptitle(title, fontsize=14)
     
     splits = ['train', 'val', 'test']
     colors = ['blue', 'green', 'red']
@@ -1106,31 +1578,46 @@ def create_scatter_plot(results, predictions, target_config):
         
         # NBM performance (bottom row)
         ax_nbm = axes[1, i]
-        ax_nbm.scatter(y_true, y_nbm, alpha=0.6, color=colors[i], s=20)
-        ax_nbm.plot([min_val, max_val], [min_val, max_val], 'k--', lw=2, alpha=0.8)
         
-        nbm_r2 = results[f'NBM_{split}']['r2']
-        nbm_mae = results[f'NBM_{split}']['mae']
-        nbm_rmse = results[f'NBM_{split}']['rmse']
+        # Check if NBM predictions are available
+        if y_nbm is not None and f'NBM_{split}' in results:
+            ax_nbm.scatter(y_true, y_nbm, alpha=0.6, color=colors[i], s=20)
+            ax_nbm.plot([min_val, max_val], [min_val, max_val], 'k--', lw=2, alpha=0.8)
+            
+            nbm_r2 = results[f'NBM_{split}']['r2']
+            nbm_mae = results[f'NBM_{split}']['mae']
+            nbm_rmse = results[f'NBM_{split}']['rmse']
+            
+            metrics_text = f'R² = {nbm_r2:.3f}\nMAE = {nbm_mae:.2f}°C\nRMSE = {nbm_rmse:.2f}°C'
+            ax_nbm.text(0.05, 0.95, metrics_text, transform=ax_nbm.transAxes,
+                       verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+            
+            ax_nbm.set_title(f'NBM Baseline - {split.title()}')
+        else:
+            # NBM data not available
+            ax_nbm.text(0.5, 0.5, 'NBM data not available\nfor multi-forecast aggregation', 
+                       transform=ax_nbm.transAxes, ha='center', va='center',
+                       bbox=dict(boxstyle='round', facecolor='lightgray', alpha=0.8))
+            ax_nbm.set_title(f'NBM Baseline - {split.title()} (No Data)')
         
-        metrics_text = f'R² = {nbm_r2:.3f}\nMAE = {nbm_mae:.2f}°C\nRMSE = {nbm_rmse:.2f}°C'
-        ax_nbm.text(0.05, 0.95, metrics_text, transform=ax_nbm.transAxes,
-                   verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
-        
-        ax_nbm.set_title(f'NBM Baseline - {split.title()}')
         ax_nbm.set_xlabel('Observed (°C)')
         ax_nbm.set_ylabel('Predicted (°C)')
         ax_nbm.grid(True, alpha=0.3)
     
     plt.tight_layout()
     
-    # Save plot
-    plots_dir = Path('./plots')
+    # Save plot with timestamp
+    plots_dir = Path(OUTPUT_PATH) / 'plots'
     plots_dir.mkdir(exist_ok=True)
-    plot_path = plots_dir / f'model_evaluation_{target_config["target_type"]}.png'
+    timestamp = generate_timestamp()
+    plot_path = plots_dir / f'model_evaluation_{target_config["target_type"]}_{timestamp}.png'
+    latest_path = plots_dir / f'model_evaluation_{target_config["target_type"]}_latest.png'
+    
     plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+    plt.savefig(latest_path, dpi=300, bbox_inches='tight')  # Also save as latest
     plt.close()  # Close the figure to free memory
     print(f"Plot saved to: {plot_path}")
+    print(f"Latest plot available at: {latest_path}")
 
 def create_feature_importance_plot(model, feature_names, target_config, all_features=None):
     """Create clean feature importance plot showing all features."""
@@ -1189,7 +1676,11 @@ def create_feature_importance_plot(model, feature_names, target_config, all_feat
     
     # Create comprehensive feature analysis
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 10))
-    fig.suptitle(f'Feature Analysis: {target_config["description"].title()}', fontsize=16)
+    
+    # Generate configuration info and create title
+    config_info = generate_config_info()
+    title = f'Feature Analysis: {target_config["description"].title()}\n{config_info}'
+    fig.suptitle(title, fontsize=16)
     
     # Left plot: Used features with importance
     importance_df = pd.DataFrame({
@@ -1251,13 +1742,18 @@ def create_feature_importance_plot(model, feature_names, target_config, all_feat
     
     plt.tight_layout()
     
-    # Save plot
-    plots_dir = Path('./plots')
+    # Save plot with timestamp
+    plots_dir = Path(OUTPUT_PATH) / 'plots'
     plots_dir.mkdir(exist_ok=True)
-    plot_path = plots_dir / f'feature_analysis_{target_config["target_type"]}.png'
+    timestamp = generate_timestamp()
+    plot_path = plots_dir / f'feature_analysis_{target_config["target_type"]}_{timestamp}.png'
+    latest_path = plots_dir / f'feature_analysis_{target_config["target_type"]}_latest.png'
+    
     plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+    plt.savefig(latest_path, dpi=300, bbox_inches='tight')  # Also save as latest
     plt.close()
     print(f"Feature analysis plot saved to: {plot_path}")
+    print(f"Latest plot available at: {latest_path}")
     
     # Print feature summary
     print(f"\nFeature Importance Summary:")
@@ -1275,7 +1771,11 @@ def create_feature_importance_plot(model, feature_names, target_config, all_feat
 def create_residuals_plot(predictions, target_config):
     """Create clean residuals analysis plot."""
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-    fig.suptitle(f'Residuals Analysis: {target_config["description"].title()}', fontsize=16)
+    
+    # Generate configuration info and create title
+    config_info = generate_config_info()
+    title = f'Residuals Analysis: {target_config["description"].title()}\n{config_info}'
+    fig.suptitle(title, fontsize=16)
     
     # Use test set for residuals analysis
     if 'test' not in predictions:
@@ -1288,7 +1788,6 @@ def create_residuals_plot(predictions, target_config):
     y_nbm = pred_data['y_nbm']
     
     ml_residuals = y_ml - y_true
-    nbm_residuals = y_nbm - y_true
     
     # 1. Residuals vs Predicted (ML)
     ax1 = axes[0, 0]
@@ -1299,13 +1798,20 @@ def create_residuals_plot(predictions, target_config):
     ax1.set_title('ML Model: Residuals vs Predicted')
     ax1.grid(True, alpha=0.3)
     
-    # 2. Residuals vs Predicted (NBM)
+    # 2. Residuals vs Predicted (NBM) - handle None case
     ax2 = axes[0, 1]
-    ax2.scatter(y_nbm, nbm_residuals, alpha=0.6, s=20, color='green')
-    ax2.axhline(y=0, color='red', linestyle='--', alpha=0.8)
-    ax2.set_xlabel('NBM Predicted (°C)')
-    ax2.set_ylabel('Residuals (°C)')
-    ax2.set_title('NBM Model: Residuals vs Predicted')
+    if y_nbm is not None:
+        nbm_residuals = y_nbm - y_true
+        ax2.scatter(y_nbm, nbm_residuals, alpha=0.6, s=20, color='green')
+        ax2.axhline(y=0, color='red', linestyle='--', alpha=0.8)
+        ax2.set_xlabel('NBM Predicted (°C)')
+        ax2.set_ylabel('Residuals (°C)')
+        ax2.set_title('NBM Baseline: Residuals vs Predicted')
+    else:
+        ax2.text(0.5, 0.5, 'NBM data not available\nfor multi-forecast aggregation', 
+                transform=ax2.transAxes, ha='center', va='center',
+                bbox=dict(boxstyle='round', facecolor='lightgray', alpha=0.8))
+        ax2.set_title('NBM Baseline: No Data Available')
     ax2.grid(True, alpha=0.3)
     
     # 3. Histogram of residuals (ML)
@@ -1324,31 +1830,42 @@ def create_residuals_plot(predictions, target_config):
              transform=ax3.transAxes, verticalalignment='top',
              bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
     
-    # 4. Histogram of residuals (NBM)
+    # 4. Histogram of residuals (NBM) - handle None case
     ax4 = axes[1, 1]
-    ax4.hist(nbm_residuals, bins=30, alpha=0.7, color='green', edgecolor='black')
-    ax4.axvline(x=0, color='red', linestyle='--', alpha=0.8)
-    ax4.set_xlabel('NBM Residuals (°C)')
-    ax4.set_ylabel('Frequency')
-    ax4.set_title('NBM Model: Residuals Distribution')
+    if y_nbm is not None:
+        nbm_residuals = y_nbm - y_true
+        ax4.hist(nbm_residuals, bins=30, alpha=0.7, color='green', edgecolor='black')
+        ax4.axvline(x=0, color='red', linestyle='--', alpha=0.8)
+        ax4.set_xlabel('NBM Residuals (°C)')
+        ax4.set_ylabel('Frequency')
+        ax4.set_title('NBM Model: Residuals Distribution')
+        
+        # Add statistics text
+        nbm_mean = np.mean(nbm_residuals)
+        nbm_std = np.std(nbm_residuals)
+        ax4.text(0.05, 0.95, f'Mean: {nbm_mean:.3f}°C\nStd: {nbm_std:.3f}°C', 
+                 transform=ax4.transAxes, verticalalignment='top',
+                 bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+    else:
+        ax4.text(0.5, 0.5, 'NBM data not available\nfor multi-forecast aggregation', 
+                transform=ax4.transAxes, ha='center', va='center',
+                bbox=dict(boxstyle='round', facecolor='lightgray', alpha=0.8))
+        ax4.set_title('NBM Model: No Data Available')
+    
     ax4.grid(True, alpha=0.3)
     
-    # Add statistics text
-    nbm_mean = np.mean(nbm_residuals)
-    nbm_std = np.std(nbm_residuals)
-    ax4.text(0.05, 0.95, f'Mean: {nbm_mean:.3f}°C\nStd: {nbm_std:.3f}°C', 
-             transform=ax4.transAxes, verticalalignment='top',
-             bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
-    
-    plt.tight_layout()
-    
-    # Save plot
-    plots_dir = Path('./plots')
+    # Save plot with timestamp
+    plots_dir = Path(OUTPUT_PATH) / 'plots'
     plots_dir.mkdir(exist_ok=True)
-    plot_path = plots_dir / f'residuals_analysis_{target_config["target_type"]}.png'
+    timestamp = generate_timestamp()
+    plot_path = plots_dir / f'residuals_analysis_{target_config["target_type"]}_{timestamp}.png'
+    latest_path = plots_dir / f'residuals_analysis_{target_config["target_type"]}_latest.png'
+    
     plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+    plt.savefig(latest_path, dpi=300, bbox_inches='tight')  # Also save as latest
     plt.close()
     print(f"Residuals analysis plot saved to: {plot_path}")
+    print(f"Latest plot available at: {latest_path}")
 
 def print_results_summary(results, qc_stats, target_config):
     """Print comprehensive results summary."""
@@ -1393,6 +1910,15 @@ def main():
     print(f"Target: {target_config['description']} ({target_config['target_type']})")
     print(f"NBM as predictor: {'Yes' if INCLUDE_NBM_AS_PREDICTOR else 'No (baseline only)'}")
     print(f"GEFS target forecast as predictor: {'Yes' if INCLUDE_GEFS_AS_PREDICTOR else 'No (independent prediction)'}")
+    print(f"Overfitting prevention: {'Enabled (aggressive regularization)' if PREVENT_OVERFITTING else 'Standard'}")
+    
+    # Report GPU acceleration status
+    print(f"GPU acceleration enabled: {'Yes' if USE_GPU_ACCELERATION else 'No'}")
+    if USE_GPU_ACCELERATION:
+        print(f"  cuML available: {'Yes' if CUML_AVAILABLE else 'No'}")
+        print(f"  XGBoost available: {'Yes' if XGBOOST_AVAILABLE else 'No'}")
+        print(f"  Prefer GPU models: {'Yes' if PREFER_GPU_MODELS else 'No'}")
+    print(f"CPU cores: {multiprocessing.cpu_count()}, Parallel jobs: {N_JOBS}")
     
     # Load data
     print("\n=== LOADING DATA ===")
@@ -1446,6 +1972,14 @@ def main():
     print("\n=== CREATING TIME-MATCHED DATASET ===")
     time_matched_df = create_time_matched_dataset(forecast_subset, nbm_subset, urma_subset)
     
+    # Verify data alignment
+    if not time_matched_df.empty:
+        verify_data_alignment(time_matched_df, target_config)
+    
+    # Handle forecast hour aggregation for improved alignment
+    print(f"\n=== AGGREGATING FORECAST HOURS (Method: {FORECAST_HOUR_AGGREGATION}) ===")
+    time_matched_df = aggregate_forecast_hours_for_evaluation(time_matched_df, method=FORECAST_HOUR_AGGREGATION)
+    
     # Apply quality control
     print("\n=== APPLYING QUALITY CONTROL ===")
     time_matched_qc, qc_stats = apply_qc_filter(time_matched_df, target_config)
@@ -1461,7 +1995,7 @@ def main():
     # Apply feature selection
     print("\n=== FEATURE SELECTION ===")
     original_features = list(X.columns)  # Store original feature list
-    X, splits, selected_features = apply_feature_selection(X, y, splits, n_features=35)  # Increased from 20 to 35
+    X, splits, selected_features = apply_feature_selection(X, y, splits, n_features=25)  # Increased from 15 to 25 to accommodate NBM features
     
     # Train model
     print("\n=== TRAINING MODEL ===")
