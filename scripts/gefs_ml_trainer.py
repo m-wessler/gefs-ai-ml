@@ -73,23 +73,24 @@ except:
 # =============================================================================
 
 BASE_PATH = "N:/data/gefs-ml/"
-# BASE_PATH = '/nas/stid/data/gefs-ml/'
-
 OUTPUT_PATH = "N:/projects/michael.wessler/gefs-ai-ml/"
+
+# BASE_PATH = '/nas/stid/data/gefs-ml/'
+# OUTPUT_PATH = "/nas/stid/projects/michael.wessler/gefs-ai-ml/"
 
 USE_ALL_AVAILABLE_STATIONS = False  # Set to True to use all available stations instead of STATION_IDS
 MAX_STATIONS = 500  # Maximum number of stations to use when USE_ALL_AVAILABLE_STATIONS is True
 RANDOM_STATION_SEED = 42  # Random seed for reproducible station selection
-STATION_IDS = ['KSLC', 'KBOI', 'KSGU', 'KPIH'] #['KSLC', 'KBOI', 'KLAS', 'KSEA', 'KLAX']
+STATION_IDS = ['KSLC']#, 'KOGD', 'KHIF', 'KU42', 'KHCR', 'KPVU', 'KU16'] #['KSLC', 'KBOI', 'KLAS', 'KSEA', 'KLAX']
 
-FORECAST_HOURS = ['f006', 'f012', 'f018', 'f024']
-QC_THRESHOLD = 2.5  # Maximum allowed deviation between URMA and station obs in °C
+FORECAST_HOURS = ['f012', 'f018', 'f024', 'f048', 'f072']
+QC_THRESHOLD = 5  # Maximum allowed deviation between URMA and station obs in °C
 TARGET_VARIABLE = 'tmax'  # 'tmax' or 'tmin'
 
 USE_HYPERPARAMETER_TUNING = False  # Set to True for better performance but slower training
 USE_VALIDATION_BASED_TRAINING = True  # Use validation set to prevent overfitting
 USE_ENSEMBLE_MODELS = False  # Use multiple models and ensemble them
-PREVENT_OVERFITTING = False  # Use aggressive regularization to prevent overfitting
+PREVENT_OVERFITTING = True  # Use aggressive regularization to prevent overfitting
 
 USE_FEATURE_SELECTION = True  # Apply feature selection to reduce overfitting
 INCLUDE_NBM_AS_PREDICTOR = False  # Include NBM forecasts as input features (vs baseline only)
