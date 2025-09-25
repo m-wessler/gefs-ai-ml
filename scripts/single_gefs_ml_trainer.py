@@ -4,14 +4,20 @@
 GEFS ML Weather Forecasting Training Pipeline (Simplified)
 
 This script implements a simplified machine learning approach to post-process weather forecasts,
-focusing on temperature predictions. It combines GEFS, NBM, and URMA data to train ML models
+focusing on temperature predictions. It combines GEFS and URMA data to train ML models
 with quality control and generates evaluation plots.
 
 Key Features:
 - URMA quality control for data validation
 - Time-based train/validation/test splits
-- Random Forest model training
-- Single comprehensive scatter plot for evaluation
+- Random Forest model training with validation-based training
+- Simplified configuration with essential toggles only
+
+SIMPLIFIED CONFIGURATION:
+- NBM is NO LONGER USED as a predictor (only for baseline comparison)
+- Essential toggles only: INCLUDE_GEFS_AS_PREDICTOR, USE_FEATURE_SELECTION, USE_HYPERPARAMETER_TUNING
+- Always uses validation-based training and separate forecast hours for best practices
+- Removed redundant options: USE_ENSEMBLE_MODELS, PREVENT_OVERFITTING, PREFER_GPU_MODELS, etc.
 
 Target Variable Configuration:
 - Set TARGET_VARIABLE = 'tmax' for maximum temperature predictions
@@ -31,13 +37,18 @@ from datetime import timedelta, datetime
 import json
 import joblib
 import os
-from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor, VotingRegressor
-from sklearn.linear_model import Ridge, Lasso
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor, VotingRegressor, ExtraTreesRegressor
+from sklearn.linear_model import Ridge, Lasso, LinearRegression
 from sklearn.svm import SVR
 from sklearn.feature_selection import SelectKBest, f_regression, RFE
+from sklearn.pipeline import Pipeline
+from sklearn.base import BaseEstimator, RegressorMixin
+from sklearn.model_selection import cross_val_score
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 import warnings
 warnings.filterwarnings('ignore')
+import argparse
+import sys
 
 # Try to import GPU-accelerated libraries
 try:
@@ -51,11 +62,30 @@ except ImportError:
 
 try:
     import xgboost as xgb
+    from xgboost import XGBRegressor
     XGBOOST_AVAILABLE = True
     print("XGBoost support detected")
 except ImportError:
     XGBOOST_AVAILABLE = False
     print("XGBoost not available")
+
+try:
+    import catboost as cb
+    from catboost import CatBoostRegressor
+    CATBOOST_AVAILABLE = True
+    print("CatBoost support detected")
+except ImportError:
+    CATBOOST_AVAILABLE = False
+    print("CatBoost not available")
+
+try:
+    import lightgbm as lgb
+    from lightgbm import LGBMRegressor
+    LIGHTGBM_AVAILABLE = True
+    print("LightGBM support detected")
+except ImportError:
+    LIGHTGBM_AVAILABLE = False
+    print("LightGBM not available")
 
 # Set optimal CPU parallelization
 try:
@@ -78,32 +108,227 @@ OUTPUT_PATH = "N:/projects/michael.wessler/gefs-ai-ml/"
 # BASE_PATH = '/nas/stid/data/gefs-ml/'
 # OUTPUT_PATH = "/nas/stid/projects/michael.wessler/gefs-ai-ml/"
 
+# Station Configuration
 USE_ALL_AVAILABLE_STATIONS = False  # Set to True to use all available stations instead of STATION_IDS
 MAX_STATIONS = 500  # Maximum number of stations to use when USE_ALL_AVAILABLE_STATIONS is True
 RANDOM_STATION_SEED = 42  # Random seed for reproducible station selection
-STATION_IDS = ['KSLC'] #['KSLC', 'KBOI', 'KLAS', 'KSEA', 'KLAX']
+STATION_IDS = ['KSEA']#, 'KBOI', 'KLAS', 'KSEA', 'KLAX']  # Multiple stations for better generalization
 
-FORECAST_HOURS = ['f024', 'f048', 'f072']
-QC_THRESHOLD = 5  # Maximum allowed deviation between URMA and station obs in °C
+# Data Configuration
+FORECAST_HOURS = ['f024']#, 'f048', 'f072']  # Multiple forecast hours for better generalization
+QC_THRESHOLD = 10  # Maximum allowed deviation between URMA and station obs in °C
 TARGET_VARIABLE = 'tmax'  # 'tmax' or 'tmin'
 
+# Model Configuration - Essential Toggles Only
 USE_HYPERPARAMETER_TUNING = True  # Set to True for better performance but slower training
-USE_VALIDATION_BASED_TRAINING = True  # Use validation set to prevent overfitting
-USE_ENSEMBLE_MODELS = False  # Use multiple models and ensemble them
-PREVENT_OVERFITTING = True  # Use aggressive regularization to prevent overfitting
-
+QUICK_HYPERPARAMETER_TUNING = True  # Set to True for faster training with smaller grids (recommended for testing)
 USE_FEATURE_SELECTION = True  # Apply feature selection to reduce overfitting
-INCLUDE_NBM_AS_PREDICTOR = False  # Include NBM forecasts as input features (vs baseline only)
 INCLUDE_GEFS_AS_PREDICTOR = True  # Include GEFS forecast of target variable as predictor (True = less independent)
+N_FEATURES_TO_SELECT = 25  # Reduced number of features to prevent overfitting (was 25)
 
-# Forecast hour aggregation method when using multiple forecast hours
-# 'separate': Keep each forecast hour as separate training examples (more data)
-# 'ensemble': Average forecasts from multiple hours for same verification time
-# 'best_lead': Use only forecast closest to 24h lead time
-FORECAST_HOUR_AGGREGATION = 'separate'  # Options: 'separate', 'ensemble', 'best_lead'
+# Model Selection - Focus on NBM residual correction instead of replacement
+MODELS_TO_TRY = [
+    # 'ols',              # Ordinary Least Squares (Linear Regression)
+    # 'ridge',            # Ridge regression (L2 regularization)
+    # 'lasso',            # Lasso regression (L1 regularization)
+    # 'stepwise',         # Stepwise regression (feature selection + OLS)
+    'random_forest',    # Random Forest (always available)
+    'gradient_boosting', # Scikit-learn Gradient Boosting (always available)
+    'xgboost',          # XGBoost (if available) 
+    # 'catboost',         # CatBoost (if available)
+    'lightgbm',         # LightGBM (if available)
+    'extra_trees'       # Extra Trees (always available)
+]
 
+# Hardware Configuration
 USE_GPU_ACCELERATION = False  # Use GPU acceleration when available (cuML, XGBoost GPU)
-PREFER_GPU_MODELS = False  # Prefer GPU models over CPU even if slightly different algorithms
+
+# Reproducibility Configuration
+GLOBAL_RANDOM_SEED = 42  # Master random seed for all operations
+ENABLE_DETERMINISTIC_RESULTS = True  # Set to True for fully reproducible results (may be slightly slower)
+
+# =============================================================================
+# CUSTOM MODELS
+# =============================================================================
+
+class StepwiseRegressor(BaseEstimator, RegressorMixin):
+    """Stepwise regression using forward/backward feature selection."""
+    
+    def __init__(self, max_features=None, direction='both', p_enter=0.05, p_remove=0.10):
+        self.max_features = max_features
+        self.direction = direction  # 'forward', 'backward', or 'both'
+        self.p_enter = p_enter
+        self.p_remove = p_remove
+        self.selected_features_ = None
+        self.estimator_ = None
+    
+    def _forward_selection(self, X, y):
+        """Forward feature selection."""
+        selected = []
+        remaining = list(range(X.shape[1]))
+        
+        while remaining:
+            best_score = float('inf')
+            best_feature = None
+            
+            for feature in remaining:
+                candidate_features = selected + [feature]
+                X_candidate = X[:, candidate_features]
+                
+                # Use cross-validation to get more robust p-value estimate
+                lr = LinearRegression()
+                scores = cross_val_score(lr, X_candidate, y, cv=3, scoring='neg_mean_squared_error')
+                score = -scores.mean()
+                
+                if score < best_score:
+                    best_score = score
+                    best_feature = feature
+            
+            if best_feature is not None:
+                selected.append(best_feature)
+                remaining.remove(best_feature)
+                
+                # Stop if we have enough features
+                if self.max_features and len(selected) >= self.max_features:
+                    break
+            else:
+                break
+                
+        return selected
+    
+    def _backward_elimination(self, X, y):
+        """Backward feature elimination."""
+        selected = list(range(X.shape[1]))
+        
+        while len(selected) > 1:
+            worst_score = float('inf')
+            worst_feature = None
+            
+            for feature in selected:
+                candidate_features = [f for f in selected if f != feature]
+                if len(candidate_features) == 0:
+                    break
+                    
+                X_candidate = X[:, candidate_features]
+                
+                # Use cross-validation to get more robust score
+                lr = LinearRegression()
+                scores = cross_val_score(lr, X_candidate, y, cv=3, scoring='neg_mean_squared_error')
+                score = -scores.mean()
+                
+                if score < worst_score:
+                    worst_score = score
+                    worst_feature = feature
+            
+            if worst_feature is not None:
+                selected.remove(worst_feature)
+                
+                # Stop if we have reached max features
+                if self.max_features and len(selected) <= self.max_features:
+                    break
+            else:
+                break
+                
+        return selected
+    
+    def fit(self, X, y):
+        """Fit the stepwise regression model."""
+        X = np.array(X)
+        y = np.array(y)
+        
+        if self.direction == 'forward':
+            self.selected_features_ = self._forward_selection(X, y)
+        elif self.direction == 'backward':
+            self.selected_features_ = self._backward_elimination(X, y)
+        else:  # both
+            # Start with forward selection, then backward elimination
+            forward_features = self._forward_selection(X, y)
+            if len(forward_features) > 0:
+                X_forward = X[:, forward_features]
+                backward_features_idx = self._backward_elimination(X_forward, y)
+                self.selected_features_ = [forward_features[i] for i in backward_features_idx]
+            else:
+                self.selected_features_ = forward_features
+        
+        # Fit final model with selected features
+        if len(self.selected_features_) > 0:
+            self.estimator_ = LinearRegression()
+            self.estimator_.fit(X[:, self.selected_features_], y)
+        else:
+            # Fallback to using all features if none selected
+            self.selected_features_ = list(range(X.shape[1]))
+            self.estimator_ = LinearRegression()
+            self.estimator_.fit(X, y)
+            
+        return self
+    
+    def predict(self, X):
+        """Predict using the fitted stepwise model."""
+        if self.estimator_ is None:
+            raise ValueError("Model must be fitted before making predictions")
+        
+        X = np.array(X)
+        return self.estimator_.predict(X[:, self.selected_features_])
+    
+    def score(self, X, y):
+        """Return the coefficient of determination R^2."""
+        if self.estimator_ is None:
+            raise ValueError("Model must be fitted before scoring")
+        
+        X = np.array(X)
+        return self.estimator_.score(X[:, self.selected_features_], y)
+
+
+# =============================================================================
+# REPRODUCIBILITY FUNCTIONS
+# =============================================================================
+
+def set_global_seeds(seed=None):
+    """Set all random seeds for reproducible results."""
+    if seed is None:
+        seed = GLOBAL_RANDOM_SEED
+    
+    print(f"Setting global random seed to: {seed}")
+    
+    # Python built-in random
+    import random
+    random.seed(seed)
+    
+    # NumPy
+    import numpy as np
+    np.random.seed(seed)
+    
+    # Pandas (for sampling operations)
+    try:
+        import pandas as pd
+        # Pandas doesn't have a direct seed, but we can ensure numpy is set
+        pass
+    except ImportError:
+        pass
+    
+    # Scikit-learn uses numpy's random state, so numpy seed covers this
+    
+    # Set additional environment variables for deterministic behavior
+    if ENABLE_DETERMINISTIC_RESULTS:
+        import os
+        # Ensure deterministic behavior in parallel processing
+        os.environ['PYTHONHASHSEED'] = str(seed)
+        
+        # Set threading to single-threaded for full reproducibility (optional)
+        # Uncomment these if you need absolute determinism at the cost of speed
+        # os.environ['OMP_NUM_THREADS'] = '1'
+        # os.environ['MKL_NUM_THREADS'] = '1'
+        
+        print("Deterministic mode enabled - results will be fully reproducible")
+    
+    # Set model-specific seeds (will be handled in model creation)
+    print("Random seeds configured for reproducible training")
+
+def get_random_state_for_model(base_seed=None):
+    """Get a consistent random state for model training."""
+    if base_seed is None:
+        base_seed = GLOBAL_RANDOM_SEED
+    return base_seed
 
 # =============================================================================
 # UTILITY FUNCTIONS
@@ -128,6 +353,44 @@ def generate_config_info():
     
     return f"{fhours_str} | {stations_str}"
 
+def generate_station_identifier():
+    """Generate station identifier for file naming."""
+    if USE_ALL_AVAILABLE_STATIONS:
+        station_count = getattr(generate_config_info, 'station_count', MAX_STATIONS)
+        return f"multi_{station_count}"
+    else:
+        if len(STATION_IDS) == 1:
+            return STATION_IDS[0]
+        else:
+            return f"multi_{len(STATION_IDS)}"
+
+def generate_forecast_hour_identifier():
+    """Generate forecast hour identifier for file naming."""
+    if len(FORECAST_HOURS) == 1:
+        # Single forecast hour: f024 -> fhr24
+        fhr = FORECAST_HOURS[0].replace('f0', '').replace('f', '')
+        return f"fhr{fhr}"
+    else:
+        # Multiple forecast hours: ['f024', 'f048', 'f072'] -> fhr24-72
+        hours = []
+        for fh in FORECAST_HOURS:
+            hour = fh.replace('f0', '').replace('f', '')
+            hours.append(int(hour))
+        hours.sort()
+        return f"fhr{hours[0]}-{hours[-1]}"
+
+def generate_filename_base(target_type, best_model_name=None):
+    """Generate base filename with new naming convention."""
+    station_id = generate_station_identifier()
+    fhr_id = generate_forecast_hour_identifier()
+    
+    if best_model_name:
+        # Include model name in filename
+        return f"gefs_ml_{target_type}_{station_id}_{fhr_id}_{best_model_name}"
+    else:
+        # Without model name (for use during training before model selection)
+        return f"gefs_ml_{target_type}_{station_id}_{fhr_id}"
+
 # =============================================================================
 # MODEL EXPORT/IMPORT FUNCTIONS
 # =============================================================================
@@ -143,9 +406,15 @@ def save_model_and_metadata(model, selected_features, target_config, results, qc
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     target_type = target_config['target_type']
     
-    # Define file paths
-    model_filename = f"gefs_ml_model_{target_type}_{timestamp}.joblib"
-    metadata_filename = f"gefs_ml_metadata_{target_type}_{timestamp}.json"
+    # Extract best model name from results
+    best_model_name = results.get('best_model', 'unknown')
+    
+    # Generate filename base with new convention
+    filename_base = generate_filename_base(target_type, best_model_name)
+    
+    # Define file paths with new naming convention
+    model_filename = f"{filename_base}_{timestamp}.joblib"
+    metadata_filename = f"{filename_base}_{timestamp}.json"
     
     model_file_path = model_path / model_filename
     metadata_file_path = model_path / metadata_filename
@@ -169,15 +438,14 @@ def save_model_and_metadata(model, selected_features, target_config, results, qc
             'QC_THRESHOLD': QC_THRESHOLD,
             'TARGET_VARIABLE': TARGET_VARIABLE,
             'USE_HYPERPARAMETER_TUNING': USE_HYPERPARAMETER_TUNING,
-            'USE_VALIDATION_BASED_TRAINING': USE_VALIDATION_BASED_TRAINING,
-            'USE_ENSEMBLE_MODELS': USE_ENSEMBLE_MODELS,
+            'QUICK_HYPERPARAMETER_TUNING': QUICK_HYPERPARAMETER_TUNING,
             'USE_FEATURE_SELECTION': USE_FEATURE_SELECTION,
-            'INCLUDE_NBM_AS_PREDICTOR': INCLUDE_NBM_AS_PREDICTOR,
             'INCLUDE_GEFS_AS_PREDICTOR': INCLUDE_GEFS_AS_PREDICTOR,
             'USE_ALL_AVAILABLE_STATIONS': USE_ALL_AVAILABLE_STATIONS,
             'MAX_STATIONS': MAX_STATIONS,
             'RANDOM_STATION_SEED': RANDOM_STATION_SEED,
-            'FORECAST_HOUR_AGGREGATION': FORECAST_HOUR_AGGREGATION
+            'USE_GPU_ACCELERATION': USE_GPU_ACCELERATION,
+            'MODELS_TO_TRY': MODELS_TO_TRY
         },
         'target_config': target_config,
         'features': {
@@ -207,13 +475,20 @@ def save_model_and_metadata(model, selected_features, target_config, results, qc
             }
         },
         'performance_metrics': {
+            # Handle the new results structure from evaluate_model
             key: {
                 'mae': float(metrics['mae']),
                 'rmse': float(metrics['rmse']),
                 'r2': float(metrics['r2']),
                 'bias': float(metrics['bias']),
                 'n_samples': int(metrics['n_samples'])
-            } for key, metrics in results.items()
+            } for key, metrics in results.items() 
+            if isinstance(metrics, dict) and 'mae' in metrics  # Only process actual metric dicts
+        },
+        'model_comparison': results.get('model_comparison', {}),  # Add model comparison results
+        'best_model_info': {
+            'best_model_name': results.get('best_model', 'unknown'),
+            'selection_criteria': 'test_set_performance'
         },
         'qc_stats': qc_stats if isinstance(qc_stats, dict) else {'error': str(qc_stats)}
     }
@@ -224,9 +499,10 @@ def save_model_and_metadata(model, selected_features, target_config, results, qc
     
     print(f"Metadata saved to: {metadata_file_path}")
     
-    # Create a latest symlink/copy for easy access
-    latest_model_path = model_path / f"gefs_ml_model_{target_type}_latest.joblib"
-    latest_metadata_path = model_path / f"gefs_ml_metadata_{target_type}_latest.json"
+    # Create a latest symlink/copy for easy access with new naming convention
+    latest_filename_base = generate_filename_base(target_type, best_model_name)
+    latest_model_path = model_path / f"{latest_filename_base}_latest.joblib"
+    latest_metadata_path = model_path / f"{latest_filename_base}_latest.json"
     
     # Copy files to latest
     import shutil
@@ -244,12 +520,33 @@ def save_model_and_metadata(model, selected_features, target_config, results, qc
     }
 
 def load_model_and_metadata(model_file_path=None, metadata_file_path=None, target_type='tmax'):
-    """Load a saved model and its metadata."""
+    """
+    Load a saved model and its metadata.
+    
+    Note: With the new naming convention, if model_file_path and metadata_file_path are None,
+    you'll need to provide them explicitly or use glob patterns to find the latest files.
+    The old simple "_latest" naming convention may not work with station/forecast hour specifics.
+    """
     
     if model_file_path is None:
-        model_file_path = Path(OUTPUT_PATH) / 'models' / f"gefs_ml_model_{target_type}_latest.joblib"
+        # Try to find latest file with new naming convention
+        model_dir = Path(OUTPUT_PATH) / 'models'
+        latest_files = list(model_dir.glob(f"gefs_ml_{target_type}_*_latest.joblib"))
+        if latest_files:
+            model_file_path = latest_files[0]  # Take first match
+        else:
+            # Fallback to old naming
+            model_file_path = model_dir / f"gefs_ml_model_{target_type}_latest.joblib"
+            
     if metadata_file_path is None:
-        metadata_file_path = Path(OUTPUT_PATH) / 'models' / f"gefs_ml_metadata_{target_type}_latest.json"
+        # Try to find corresponding metadata file
+        model_dir = Path(OUTPUT_PATH) / 'models'
+        latest_files = list(model_dir.glob(f"gefs_ml_{target_type}_*_latest.json"))
+        if latest_files:
+            metadata_file_path = latest_files[0]  # Take first match
+        else:
+            # Fallback to old naming
+            metadata_file_path = model_dir / f"gefs_ml_metadata_{target_type}_latest.json"
     
     # Load model
     model = joblib.load(model_file_path)
@@ -387,13 +684,15 @@ def get_target_config(target_type=None):
 
 def create_gpu_random_forest(n_estimators=100):
     """Create GPU-accelerated Random Forest if available, fallback to CPU"""
+    random_seed = get_random_state_for_model()
+    
     if USE_GPU_ACCELERATION and CUML_AVAILABLE:
         try:
             print("Creating GPU Random Forest using cuML...")
             from cuml.ensemble import RandomForestRegressor as GPURandomForest
             return GPURandomForest(
                 n_estimators=n_estimators,
-                random_state=42,
+                random_state=random_seed,
                 n_streams=1  # Use single stream for stability
             )
         except Exception as e:
@@ -403,18 +702,20 @@ def create_gpu_random_forest(n_estimators=100):
     # CPU fallback
     return RandomForestRegressor(
         n_estimators=n_estimators,
-        random_state=42,
+        random_state=random_seed,
         n_jobs=N_JOBS
     )
 
 def create_gpu_xgboost(n_estimators=100):
     """Create GPU-accelerated XGBoost if available, fallback to CPU"""
+    random_seed = get_random_state_for_model()
+    
     if USE_GPU_ACCELERATION and XGBOOST_AVAILABLE:
         try:
             print("Creating GPU XGBoost...")
             return XGBRegressor(
                 n_estimators=n_estimators,
-                random_state=42,
+                random_state=random_seed,
                 tree_method='gpu_hist',
                 gpu_id=0,
                 eval_metric='rmse'
@@ -426,10 +727,345 @@ def create_gpu_xgboost(n_estimators=100):
     # CPU fallback
     return XGBRegressor(
         n_estimators=n_estimators,
-        random_state=42,
+        random_state=random_seed,
         n_jobs=N_JOBS,
         eval_metric='rmse'
     )
+
+# =============================================================================
+# MODEL FACTORY FUNCTIONS
+# =============================================================================
+
+def get_available_models():
+    """Return list of available models based on installed packages."""
+    available = []
+    
+    # Always available models (including linear models)
+    available.extend([
+        'ols',              # Ordinary Least Squares
+        'ridge',            # Ridge regression  
+        'lasso',            # Lasso regression
+        'stepwise',         # Stepwise regression
+        'random_forest', 
+        'gradient_boosting', 
+        'extra_trees'
+    ])
+    
+    # Conditional models
+    if XGBOOST_AVAILABLE:
+        available.append('xgboost')
+    if CATBOOST_AVAILABLE:
+        available.append('catboost') 
+    if LIGHTGBM_AVAILABLE:
+        available.append('lightgbm')
+        
+    return available
+
+def create_model(model_name, use_gpu=False, **kwargs):
+    """Factory function to create different types of models."""
+    
+    # Get consistent random state
+    random_seed = get_random_state_for_model()
+    
+    if model_name == 'random_forest':
+        if use_gpu and CUML_AVAILABLE:
+            return create_gpu_random_forest(**kwargs)
+        else:
+            return RandomForestRegressor(
+                n_estimators=kwargs.get('n_estimators', 100),
+                max_depth=kwargs.get('max_depth', 10),
+                min_samples_split=kwargs.get('min_samples_split', 10),
+                min_samples_leaf=kwargs.get('min_samples_leaf', 5),
+                max_features=kwargs.get('max_features', 'sqrt'),
+                random_state=random_seed,
+                n_jobs=N_JOBS,
+                bootstrap=True,
+                oob_score=True
+            )
+    
+    elif model_name == 'xgboost':
+        if not XGBOOST_AVAILABLE:
+            raise ValueError("XGBoost not available")
+        
+        if use_gpu:
+            return create_gpu_xgboost(**kwargs)
+        else:
+            return XGBRegressor(
+                n_estimators=kwargs.get('n_estimators', 100),
+                max_depth=kwargs.get('max_depth', 6),
+                learning_rate=kwargs.get('learning_rate', 0.1),
+                subsample=kwargs.get('subsample', 0.8),
+                colsample_bytree=kwargs.get('colsample_bytree', 0.8),
+                random_state=random_seed,
+                n_jobs=N_JOBS,
+                eval_metric='rmse'
+            )
+    
+    elif model_name == 'catboost':
+        if not CATBOOST_AVAILABLE:
+            raise ValueError("CatBoost not available")
+        
+        return CatBoostRegressor(
+            iterations=kwargs.get('n_estimators', 100),
+            depth=kwargs.get('max_depth', 6),
+            learning_rate=kwargs.get('learning_rate', 0.1),
+            subsample=kwargs.get('subsample', 0.8),
+            random_seed=random_seed,
+            task_type='GPU' if use_gpu else 'CPU',
+            verbose=False
+        )
+    
+    elif model_name == 'lightgbm':
+        if not LIGHTGBM_AVAILABLE:
+            raise ValueError("LightGBM not available")
+        
+        return LGBMRegressor(
+            n_estimators=kwargs.get('n_estimators', 100),
+            max_depth=kwargs.get('max_depth', 6),
+            learning_rate=kwargs.get('learning_rate', 0.1),
+            subsample=kwargs.get('subsample', 0.8),
+            colsample_bytree=kwargs.get('colsample_bytree', 0.8),
+            random_state=random_seed,
+            n_jobs=N_JOBS,
+            device='gpu' if use_gpu else 'cpu',
+            verbosity=-1  # Use 'verbosity' instead of 'verbose' for LightGBM
+        )
+    
+    elif model_name == 'ridge':
+        return Ridge(
+            alpha=kwargs.get('alpha', 1.0),
+            random_state=random_seed,
+            fit_intercept=True
+        )
+    
+    elif model_name == 'lasso':
+        return Lasso(
+            alpha=kwargs.get('alpha', 1.0),
+            random_state=random_seed,
+            fit_intercept=True,
+            max_iter=kwargs.get('max_iter', 2000)
+        )
+    
+    elif model_name == 'ols':
+        return LinearRegression(
+            fit_intercept=True
+        )
+    
+    elif model_name == 'stepwise':
+        # Custom stepwise regression with feature selection
+        return StepwiseRegressor(
+            max_features=None,
+            direction='both'
+        )
+    
+    elif model_name == 'gradient_boosting':
+        return GradientBoostingRegressor(
+            n_estimators=kwargs.get('n_estimators', 100),
+            max_depth=kwargs.get('max_depth', 6),
+            learning_rate=kwargs.get('learning_rate', 0.1),
+            subsample=kwargs.get('subsample', 0.8),
+            random_state=random_seed
+        )
+    
+    elif model_name == 'extra_trees':
+        return ExtraTreesRegressor(
+            n_estimators=kwargs.get('n_estimators', 100),
+            max_depth=kwargs.get('max_depth', 10),
+            min_samples_split=kwargs.get('min_samples_split', 10),
+            min_samples_leaf=kwargs.get('min_samples_leaf', 5),
+            max_features=kwargs.get('max_features', 'sqrt'),
+            random_state=random_seed,
+            n_jobs=N_JOBS,
+            bootstrap=False
+        )
+    
+    else:
+        raise ValueError(f"Unknown model type: {model_name}")
+
+def get_model_hyperparameter_grid(model_name):
+    """Get optimized hyperparameter grid for different models (reduced grid size for faster training)."""
+    
+    if QUICK_HYPERPARAMETER_TUNING:
+        # Quick mode - minimal grids for fast testing
+        if model_name == 'random_forest':
+            return {
+                'n_estimators': [50, 100],  # Reduced from 100 to prevent overfitting
+                'max_depth': [5, 8],        # More conservative depth
+                'min_samples_split': [20],   # Higher minimum samples
+                'min_samples_leaf': [10],    # Higher minimum leaf samples
+                'max_features': ['sqrt']     # Conservative feature sampling
+            }
+            # Grid size: 2×2×1×1×1 = 4 combinations
+        
+        elif model_name == 'ridge':
+            return {
+                'alpha': [0.1, 1.0, 10.0]
+            }
+            # Grid size: 3 combinations
+        
+        elif model_name == 'lasso':
+            return {
+                'alpha': [0.01, 0.1, 1.0, 10.0]
+            }
+            # Grid size: 4 combinations
+        
+        elif model_name == 'ols':
+            return {}  # No hyperparameters to tune for OLS
+            # Grid size: 1 combination
+        
+        elif model_name == 'stepwise':
+            return {
+                'direction': ['forward', 'backward', 'both'],
+                'max_features': [None, 10, 20]
+            }  # Grid size: 9 combinations
+        
+        elif model_name == 'xgboost':
+            return {
+                'n_estimators': [100],           # Keep simple for quick mode
+                'max_depth': [3],                # Shallower trees
+                'learning_rate': [0.05],         # Lower learning rate
+                'subsample': [0.8],              # Sample fewer rows
+                'colsample_bytree': [0.8],       # Sample fewer features
+                'reg_alpha': [1.0],              # L1 regularization
+                'reg_lambda': [1.0]              # L2 regularization
+            }
+            # Grid size: 1×1×1×1×1×1×1 = 1 combination
+        
+        elif model_name == 'catboost':
+            return {
+                'n_estimators': [100],
+                'max_depth': [6],
+                'learning_rate': [0.1],
+                'subsample': [0.8],
+                'reg_lambda': [0]
+            }
+            # Grid size: 1×1×1×1×1 = 1 combination
+        
+        elif model_name == 'lightgbm':
+            return {
+                'n_estimators': [100],           # Keep simple for quick mode
+                'max_depth': [3],                # Shallower trees
+                'learning_rate': [0.05],         # Lower learning rate
+                'subsample': [0.8],              # Sample fewer rows
+                'colsample_bytree': [0.8],       # Sample fewer features
+                'reg_alpha': [1.0],              # L1 regularization
+                'reg_lambda': [1.0]              # L2 regularization
+            }
+            # Grid size: 1×1×1×1×1×1×1 = 1 combination
+        
+        elif model_name == 'gradient_boosting':
+            return {
+                'n_estimators': [100],           # Keep simple for quick mode
+                'max_depth': [3],                # Shallower trees
+                'learning_rate': [0.05],         # Lower learning rate
+                'subsample': [0.8],              # Sample fewer rows
+                'min_samples_split': [20],       # Higher minimum samples
+                'min_samples_leaf': [10]         # Higher minimum leaf samples
+            }
+            # Grid size: 1×1×1×1×1×1 = 1 combination
+        
+        elif model_name == 'extra_trees':
+            return {
+                'n_estimators': [100],
+                'max_depth': [5, 8],             # More conservative depth
+                'min_samples_split': [20],       # Higher minimum samples
+                'min_samples_leaf': [10],        # Higher minimum leaf samples
+                'max_features': ['sqrt']
+            }
+            # Grid size: 1×2×1×1×1 = 2 combinations
+    
+    else:
+        # Standard mode - more comprehensive grids for better performance
+        if model_name == 'random_forest':
+            return {
+                'n_estimators': [100, 150],  # Reduced from 3 to 2 options
+                'max_depth': [8, 10, None],  # Reduced from 5 to 3 options
+                'min_samples_split': [10, 20],  # Reduced from 4 to 2 options
+                'min_samples_leaf': [5, 10],  # Reduced from 4 to 2 options
+                'max_features': ['sqrt', 0.3],  # Reduced from 4 to 2 options
+                'max_samples': [0.8, None]  # Reduced from 4 to 2 options
+            }
+            # Grid size: 2×3×2×2×2×2 = 96 combinations
+        
+        elif model_name == 'xgboost':
+            return {
+                'n_estimators': [100, 150],  # Reduced from 3 to 2 options
+                'max_depth': [4, 6],  # Reduced from 4 to 2 options
+                'learning_rate': [0.05, 0.1],  # Reduced from 4 to 2 options
+                'subsample': [0.8, 0.9],  # Reduced from 3 to 2 options
+                'colsample_bytree': [0.8, 0.9],  # Reduced from 3 to 2 options
+                'reg_alpha': [0, 0.1],  # Reduced from 3 to 2 options
+                'reg_lambda': [0, 0.1]  # Reduced from 3 to 2 options
+            }
+            # Grid size: 2×2×2×2×2×2×2 = 128 combinations
+        
+        elif model_name == 'catboost':
+            return {
+                'n_estimators': [100, 150],  # Reduced from 3 to 2 options
+                'max_depth': [6, 8],  # Reduced from 4 to 2 options
+                'learning_rate': [0.05, 0.1],  # Reduced from 4 to 2 options
+                'subsample': [0.8, 0.9],  # Reduced from 3 to 2 options
+                'reg_lambda': [0, 1]  # Reduced from 4 to 2 options
+            }
+            # Grid size: 2×2×2×2×2 = 32 combinations
+        
+        elif model_name == 'lightgbm':
+            return {
+                'n_estimators': [100, 150],  # Reduced from 3 to 2 options
+                'max_depth': [4, 6],  # Reduced from 4 to 2 options
+                'learning_rate': [0.05, 0.1],  # Reduced from 4 to 2 options
+                'subsample': [0.8, 0.9],  # Reduced from 3 to 2 options
+                'colsample_bytree': [0.8, 0.9],  # Reduced from 3 to 2 options
+                'reg_alpha': [0, 0.1],  # Reduced from 3 to 2 options
+                'reg_lambda': [0, 0.1]  # Reduced from 3 to 2 options
+            }
+            # Grid size: 2×2×2×2×2×2×2 = 128 combinations
+        
+        elif model_name == 'gradient_boosting':
+            return {
+                'n_estimators': [100, 150],  # Reduced from 3 to 2 options
+                'max_depth': [4, 6],  # Reduced from 4 to 2 options
+                'learning_rate': [0.05, 0.1],  # Reduced from 4 to 2 options
+                'subsample': [0.8, 0.9],  # Reduced from 3 to 2 options
+                'min_samples_split': [10, 20],  # Reduced from 3 to 2 options
+                'min_samples_leaf': [5, 10]  # Reduced from 3 to 2 options
+            }
+            # Grid size: 2×2×2×2×2×2 = 64 combinations
+        
+        elif model_name == 'extra_trees':
+            return {
+                'n_estimators': [100, 150],  # Reduced from 3 to 2 options
+                'max_depth': [8, 10, None],  # Reduced from 5 to 3 options
+                'min_samples_split': [10, 20],  # Reduced from 4 to 2 options
+                'min_samples_leaf': [5, 10],  # Reduced from 4 to 2 options
+                'max_features': ['sqrt', 0.3]  # Reduced from 4 to 2 options
+            }
+            # Grid size: 2×3×2×2×2 = 48 combinations
+        
+        elif model_name == 'ridge':
+            return {
+                'alpha': [0.1, 1.0, 10.0, 100.0]
+            }
+            # Grid size: 4 combinations
+        
+        elif model_name == 'lasso':
+            return {
+                'alpha': [0.01, 0.1, 1.0, 10.0]
+            }
+            # Grid size: 4 combinations
+        
+        elif model_name == 'ols':
+            return {}  # No hyperparameters to tune for OLS
+            # Grid size: 1 combination
+        
+        elif model_name == 'stepwise':
+            return {
+                'direction': ['forward', 'backward', 'both'],
+                'max_features': [None, 10, 15, 20]
+            }  # Grid size: 12 combinations
+    
+    # If we get here, model_name is not recognized
+    raise ValueError(f"No hyperparameter grid defined for model: {model_name}")
 
 # =============================================================================
 # DATA LOADING FUNCTIONS
@@ -467,12 +1103,12 @@ def select_stations():
             selected_stations = available_stations
             print(f"Using all {len(selected_stations)} available stations")
         else:
-            # Randomly select stations for reproducibility
-            random.seed(RANDOM_STATION_SEED)
+            # Randomly select stations for reproducibility - use global seed for consistency
+            random.seed(GLOBAL_RANDOM_SEED)
             selected_stations = random.sample(available_stations, MAX_STATIONS)
             selected_stations.sort()  # Sort for consistent ordering
             print(f"Randomly selected {len(selected_stations)} stations from {len(available_stations)} available")
-            print(f"Random seed used: {RANDOM_STATION_SEED}")
+            print(f"Random seed used: {GLOBAL_RANDOM_SEED}")
         
         print(f"Selected stations: {selected_stations}")
         return selected_stations
@@ -911,25 +1547,13 @@ def prepare_ml_data(time_matched_qc, target_config):
     
     # Reset index and filter for complete data
     df = time_matched_qc.reset_index().set_index(['valid_datetime', 'sid'])
-    required_cols = [col for col in [target_col, nbm_col, gefs_col] if col is not None]
+    required_cols = [col for col in [target_col, gefs_col] if col is not None]
     df = df.dropna(subset=required_cols)
     
     # Feature Engineering
     print("Creating engineered features...")
     
-    # 1. Forecast differences and ratios (only if NBM is included as predictor)
-    if INCLUDE_NBM_AS_PREDICTOR and gefs_col and nbm_col and gefs_col in df.columns and nbm_col in df.columns:
-        df['gefs_nbm_diff'] = df[gefs_col] - df[nbm_col]
-        df['gefs_nbm_ratio'] = df[gefs_col] / (df[nbm_col] + 1e-6)  # Avoid division by zero
-        print("  - Added GEFS-NBM difference and ratio features")
-    
-    # 2. Ensemble features (only if NBM is included as predictor)
-    if INCLUDE_NBM_AS_PREDICTOR and gefs_col in df.columns and nbm_col in df.columns:
-        df['ensemble_mean'] = (df[gefs_col] + df[nbm_col]) / 2
-        df['ensemble_weighted'] = 0.3 * df[gefs_col] + 0.7 * df[nbm_col]  # NBM weighted higher
-        print("  - Added ensemble features")
-    
-    # 3. Time-based features
+    # 1. Time-based features
     df = df.reset_index()
     df['hour'] = pd.to_datetime(df['valid_datetime']).dt.hour
     df['day_of_year'] = pd.to_datetime(df['valid_datetime']).dt.dayofyear
@@ -937,26 +1561,17 @@ def prepare_ml_data(time_matched_qc, target_config):
     df['season'] = ((pd.to_datetime(df['valid_datetime']).dt.month % 12 + 3) // 3).map({1: 'winter', 2: 'spring', 3: 'summer', 4: 'fall'})
     print("  - Added time-based features")
     
-    # 4. Station-based features (one-hot encoding)
+    # 2. Station-based features (one-hot encoding)
     station_dummies = pd.get_dummies(df['sid'], prefix='station')
     df = pd.concat([df, station_dummies], axis=1)
     print("  - Added station dummy variables")
     
-    # 5. Seasonal interaction terms
+    # 3. Seasonal interaction terms
     season_dummies = pd.get_dummies(df['season'], prefix='season')
     df = pd.concat([df, season_dummies], axis=1)
     print("  - Added seasonal dummy variables")
     
-    # 6. NBM bias correction features (only if NBM is included as predictor)
-    if INCLUDE_NBM_AS_PREDICTOR and 'urma_' + target_config['obs_col'] in df.columns:
-        urma_obs_col = 'urma_' + target_config['obs_col']
-        if nbm_col in df.columns:
-            df['nbm_bias'] = df[nbm_col] - df[urma_obs_col]
-        if gefs_col in df.columns:
-            df['gefs_bias'] = df[gefs_col] - df[urma_obs_col]
-        print("  - Added bias correction features")
-    
-    # 7. Advanced atmospheric features
+    # 4. Advanced atmospheric features
     if 'gefs_tmp_2m' in df.columns and 'gefs_tmp_pres_850' in df.columns:
         df['temp_gradient_sfc_850'] = df['gefs_tmp_2m'] - df['gefs_tmp_pres_850']
         print("  - Added temperature gradient features")
@@ -969,14 +1584,6 @@ def prepare_ml_data(time_matched_qc, target_config):
         df['wind_speed'] = np.sqrt(df['gefs_ugrd_hgt']**2 + df['gefs_vgrd_hgt']**2)
         df['wind_direction'] = np.arctan2(df['gefs_vgrd_hgt'], df['gefs_ugrd_hgt'])
         print("  - Added wind speed and direction features")
-    
-    # 8. Forecast error variance features (if NBM included)
-    if INCLUDE_NBM_AS_PREDICTOR and gefs_col in df.columns and nbm_col in df.columns:
-        # Rolling standard deviation of forecast differences as uncertainty measure
-        df_sorted = df.sort_index()
-        df_sorted['forecast_uncertainty'] = df_sorted.groupby('sid')['gefs_nbm_diff'].rolling(window=5, min_periods=1).std().values
-        df['forecast_uncertainty'] = df_sorted['forecast_uncertainty']
-        print("  - Added forecast uncertainty features")
     
     # Set index back
     df = df.set_index(['valid_datetime', 'sid'])
@@ -999,27 +1606,17 @@ def prepare_ml_data(time_matched_qc, target_config):
     
     print(f"Prohibited GEFS features for {target_config['target_type']} prediction: {prohibited_gefs_features}")
     
-    # Select features based on configuration
-    if INCLUDE_NBM_AS_PREDICTOR:
-        # Include all features except observation columns, prohibited features, and non-numeric
-        feature_cols = [col for col in df.columns 
-                       if 'obs' not in col.lower() 
-                       and col != 'season'
-                       and col not in prohibited_gefs_features]
-        print(f"  - Including NBM forecasts as predictors")
-    else:
-        # Include GEFS atmospheric variables (excluding prohibited ones) plus engineered features
-        gefs_atmos_cols = [col for col in df.columns 
-                          if col.startswith('gefs_') 
-                          and 'obs' not in col.lower()
-                          and col not in prohibited_gefs_features]
-        engineered_cols = [col for col in df.columns if any(term in col for term in ['hour', 'day_of_year', 'month', 'station_', 'season_'])]
-        feature_cols = gefs_atmos_cols + engineered_cols
-        print(f"  - Including {len(gefs_atmos_cols)} GEFS atmospheric variables as features")
-        print(f"  - Plus {len(engineered_cols)} engineered features")
-        print(f"  - Excluding NBM forecasts as predictors (baseline comparison only)")
-        if not INCLUDE_GEFS_AS_PREDICTOR:
-            print(f"  - Excluding GEFS target forecast (gefs_{target_config['forecast_col']}) for independent prediction")
+    # Select features - GEFS atmospheric variables (excluding prohibited ones) plus engineered features
+    gefs_atmos_cols = [col for col in df.columns 
+                      if col.startswith('gefs_') 
+                      and 'obs' not in col.lower()
+                      and col not in prohibited_gefs_features]
+    engineered_cols = [col for col in df.columns if any(term in col for term in ['hour', 'day_of_year', 'month', 'station_', 'season_'])]
+    feature_cols = gefs_atmos_cols + engineered_cols
+    print(f"  - Including {len(gefs_atmos_cols)} GEFS atmospheric variables as features")
+    print(f"  - Plus {len(engineered_cols)} engineered features")
+    if not INCLUDE_GEFS_AS_PREDICTOR:
+        print(f"  - Excluding GEFS target forecast (gefs_{target_config['forecast_col']}) for independent prediction")
     
     # Final feature validation
     available_features = [col for col in feature_cols if col in df.columns]
@@ -1070,8 +1667,9 @@ def apply_feature_selection(X, y, splits, n_features=20):
     f_scores = f_selector.scores_
     
     # Method 2: Recursive Feature Elimination with Random Forest
+    random_seed = get_random_state_for_model()
     rf_selector = RFE(
-        RandomForestRegressor(n_estimators=20, random_state=42, n_jobs=-1),
+        RandomForestRegressor(n_estimators=20, random_state=random_seed, n_jobs=-1),
         n_features_to_select=min(n_features * 2, X_train_clean.shape[1])
     )
     rf_selector.fit(X_train_clean, y_train_clean)
@@ -1096,11 +1694,8 @@ def apply_feature_selection(X, y, splits, n_features=20):
             candidate_features.append(feature)
             print(f"Added important GEFS atmospheric variable: {feature}")
     
-    # Ensure we have key forecasting features
-    if INCLUDE_NBM_AS_PREDICTOR:
-        key_features = [col for col in X.columns if any(term in col.lower() for term in ['nbm', 'ensemble'])]
-    else:
-        key_features = []  # Already handled GEFS features above
+    # Ensure we have key GEFS atmospheric features
+    key_features = []  # No NBM features needed since we're not using NBM as predictor
     
     # Add key features that weren't already selected
     for feature in key_features:
@@ -1134,20 +1729,78 @@ def apply_feature_selection(X, y, splits, n_features=20):
     return X_selected, splits_selected, selected_features
 
 def create_time_splits(X, y, test_size=0.2, val_size=0.1):
-    """Create time-based train/validation/test splits."""
-    unique_dates = X.index.get_level_values('valid_datetime').unique().sort_values()
-    n_dates = len(unique_dates)
+    """
+    Create time-based train/validation/test splits preventing data leakage.
     
-    test_start_idx = int(n_dates * (1 - test_size))
-    val_start_idx = int((n_dates - int(n_dates * test_size)) * (1 - val_size))
+    CRITICAL: When using multiple forecast hours, we must split by URMA verification time
+    (urma_valid_datetime) rather than forecast time (valid_datetime) to prevent the same
+    verification observation from appearing in multiple splits.
+    """
+    print("Creating time-based splits with data leakage prevention...")
     
-    train_dates = unique_dates[:val_start_idx]
-    val_dates = unique_dates[val_start_idx:test_start_idx]
-    test_dates = unique_dates[test_start_idx:]
-    
-    train_mask = X.index.get_level_values('valid_datetime').isin(train_dates)
-    val_mask = X.index.get_level_values('valid_datetime').isin(val_dates)
-    test_mask = X.index.get_level_values('valid_datetime').isin(test_dates)
+    # Check if we have the multi-index structure with urma_valid_datetime
+    if isinstance(X.index, pd.MultiIndex) and 'urma_valid_datetime' in X.index.names:
+        # Split by URMA verification times (the target observation times)
+        unique_urma_dates = X.index.get_level_values('urma_valid_datetime').unique().sort_values()
+        print(f"Splitting by {len(unique_urma_dates)} unique URMA verification times")
+        
+        # Calculate split indices
+        n_dates = len(unique_urma_dates)
+        test_start_idx = int(n_dates * (1 - test_size))
+        val_start_idx = int((n_dates - int(n_dates * test_size)) * (1 - val_size))
+        
+        # Create time-based splits using URMA times
+        train_urma_dates = unique_urma_dates[:val_start_idx]
+        val_urma_dates = unique_urma_dates[val_start_idx:test_start_idx]
+        test_urma_dates = unique_urma_dates[test_start_idx:]
+        
+        print(f"Split ranges:")
+        print(f"  Train: {train_urma_dates[0]} to {train_urma_dates[-1]} ({len(train_urma_dates)} dates)")
+        print(f"  Val:   {val_urma_dates[0]} to {val_urma_dates[-1]} ({len(val_urma_dates)} dates)")
+        print(f"  Test:  {test_urma_dates[0]} to {test_urma_dates[-1]} ({len(test_urma_dates)} dates)")
+        
+        # Create masks based on URMA verification times
+        train_mask = X.index.get_level_values('urma_valid_datetime').isin(train_urma_dates)
+        val_mask = X.index.get_level_values('urma_valid_datetime').isin(val_urma_dates)
+        test_mask = X.index.get_level_values('urma_valid_datetime').isin(test_urma_dates)
+        
+        # Verify no data leakage
+        print("Data leakage verification:")
+        print(f"  Train samples: {train_mask.sum()}")
+        print(f"  Val samples:   {val_mask.sum()}")
+        print(f"  Test samples:  {test_mask.sum()}")
+        print(f"  Total samples: {len(X)} (should equal sum above)")
+        
+        # Check for any overlap in URMA verification times between splits
+        train_urma_set = set(train_urma_dates)
+        val_urma_set = set(val_urma_dates)
+        test_urma_set = set(test_urma_dates)
+        
+        if train_urma_set & val_urma_set:
+            print("⚠️  WARNING: Train/Val overlap detected!")
+        if train_urma_set & test_urma_set:
+            print("⚠️  WARNING: Train/Test overlap detected!")
+        if val_urma_set & test_urma_set:
+            print("⚠️  WARNING: Val/Test overlap detected!")
+        else:
+            print("✅ No data leakage detected - clean splits achieved")
+            
+    else:
+        # Fallback to old method if structure is different
+        print("Using fallback splitting method (forecast times)")
+        unique_dates = X.index.get_level_values('valid_datetime').unique().sort_values()
+        n_dates = len(unique_dates)
+        
+        test_start_idx = int(n_dates * (1 - test_size))
+        val_start_idx = int((n_dates - int(n_dates * test_size)) * (1 - val_size))
+        
+        train_dates = unique_dates[:val_start_idx]
+        val_dates = unique_dates[val_start_idx:test_start_idx]
+        test_dates = unique_dates[test_start_idx:]
+        
+        train_mask = X.index.get_level_values('valid_datetime').isin(train_dates)
+        val_mask = X.index.get_level_values('valid_datetime').isin(val_dates)
+        test_mask = X.index.get_level_values('valid_datetime').isin(test_dates)
     
     return {
         'X_train': X[train_mask], 'y_train': y[train_mask],
@@ -1155,8 +1808,77 @@ def create_time_splits(X, y, test_size=0.2, val_size=0.1):
         'X_test': X[test_mask], 'y_test': y[test_mask]
     }
 
-def tune_hyperparameters(splits, use_tuning=True):
-    """Tune hyperparameters using validation set to prevent overfitting."""
+def verify_data_splits_integrity(splits):
+    """
+    Verify that train/val/test splits don't have data leakage when using multiple forecast hours.
+    
+    This function checks that no URMA verification time appears in multiple splits,
+    which would constitute data leakage and artificially inflate performance metrics.
+    """
+    print("\n=== DATA SPLIT INTEGRITY VERIFICATION ===")
+    
+    # Extract all data
+    X_train, X_val, X_test = splits['X_train'], splits['X_val'], splits['X_test']
+    
+    # Check if we have the multi-index structure
+    if not isinstance(X_train.index, pd.MultiIndex) or 'urma_valid_datetime' not in X_train.index.names:
+        print("⚠️  Cannot verify integrity - no urma_valid_datetime in index")
+        return
+    
+    # Get unique URMA verification times for each split
+    train_urma_times = set(X_train.index.get_level_values('urma_valid_datetime'))
+    val_urma_times = set(X_val.index.get_level_values('urma_valid_datetime'))
+    test_urma_times = set(X_test.index.get_level_values('urma_valid_datetime'))
+    
+    print(f"Unique verification times:")
+    print(f"  Train: {len(train_urma_times)} unique times")
+    print(f"  Val:   {len(val_urma_times)} unique times") 
+    print(f"  Test:  {len(test_urma_times)} unique times")
+    
+    # Check for overlaps
+    train_val_overlap = train_urma_times & val_urma_times
+    train_test_overlap = train_urma_times & test_urma_times
+    val_test_overlap = val_urma_times & test_urma_times
+    
+    integrity_passed = True
+    
+    if train_val_overlap:
+        print(f"❌ TRAIN/VAL OVERLAP: {len(train_val_overlap)} verification times appear in both train and val")
+        integrity_passed = False
+    else:
+        print("✅ Train/Val: No overlap")
+    
+    if train_test_overlap:
+        print(f"❌ TRAIN/TEST OVERLAP: {len(train_test_overlap)} verification times appear in both train and test")
+        integrity_passed = False
+    else:
+        print("✅ Train/Test: No overlap")
+        
+    if val_test_overlap:
+        print(f"❌ VAL/TEST OVERLAP: {len(val_test_overlap)} verification times appear in both val and test")
+        integrity_passed = False
+    else:
+        print("✅ Val/Test: No overlap")
+    
+    # Show forecast hour distribution if available
+    if 'forecast_lead_hours' in X_train.columns:
+        print(f"\nForecast hour distribution:")
+        for split_name, X_split in [('Train', X_train), ('Val', X_val), ('Test', X_test)]:
+            lead_hours = X_split['forecast_lead_hours'].value_counts().sort_index()
+            hours_str = ', '.join([f"{h}h:{c}" for h, c in lead_hours.items()])
+            print(f"  {split_name}: {hours_str}")
+    
+    if integrity_passed:
+        print("\n🎯 DATA INTEGRITY VERIFIED: No data leakage detected!")
+        print("   Multiple forecast hours are properly isolated by verification time.")
+    else:
+        print("\n⚠️  DATA LEAKAGE DETECTED: Results may be artificially inflated!")
+        print("   The same verification observations appear in multiple splits.")
+    
+    print("=== END INTEGRITY VERIFICATION ===\n")
+
+def tune_hyperparameters(splits, model_name='random_forest', use_tuning=True):
+    """Tune hyperparameters for specified model using validation set to prevent overfitting."""
     if not use_tuning:
         return {}
     
@@ -1167,36 +1889,277 @@ def tune_hyperparameters(splits, use_tuning=True):
     X_train_clean = splits['X_train'][train_mask]
     y_train_clean = splits['y_train'][train_mask]
     
-    # Define parameter grid for tuning
-    param_grid = {
-        'n_estimators': [30, 50, 70],
-        'max_depth': [8, 10, 12, None],
-        'min_samples_split': [5, 10, 15],
-        'min_samples_leaf': [2, 5, 8],
-        'max_features': ['sqrt', 'log2']
-    }
+    # Get model-specific parameter grid
+    param_grid = get_model_hyperparameter_grid(model_name)
     
     # Create base model
-    rf = RandomForestRegressor(random_state=42, n_jobs=-1, bootstrap=True, oob_score=True)
+    base_model = create_model(model_name, use_gpu=USE_GPU_ACCELERATION)
     
-    # Perform grid search with cross-validation
-    print("Tuning hyperparameters...")
+    # Perform grid search with time-aware cross-validation
+    tuning_mode = "Quick" if QUICK_HYPERPARAMETER_TUNING else "Comprehensive"
+    print(f"Tuning hyperparameters for {model_name} with {tuning_mode.lower()} grid...")
+    grid_size = 1
+    for param_values in param_grid.values():
+        grid_size *= len(param_values)
+    print(f"Grid size: {grid_size} combinations ({tuning_mode} mode)")
+    print(f"Fitting 5 folds for each of {grid_size} candidates, totalling {grid_size * 5} fits")
+    
+    if grid_size > 500:
+        print("WARNING: Large grid detected! Consider enabling QUICK_HYPERPARAMETER_TUNING for faster training.")
+    
+    # Create reproducible cross-validation splitter
+    from sklearn.model_selection import KFold
+    cv_splitter = KFold(n_splits=5, shuffle=True, random_state=get_random_state_for_model())
+    
     grid_search = GridSearchCV(
-        rf, param_grid, 
-        cv=3,  # 3-fold cross-validation
+        base_model, param_grid, 
+        cv=cv_splitter,  # Use explicit CV splitter for reproducibility
         scoring='neg_mean_squared_error',
         n_jobs=-1,
-        verbose=2
+        verbose=1,  # Reduced verbosity to avoid overwhelming output
+        return_train_score=True  # Track training scores to detect overfitting
     )
     
     grid_search.fit(X_train_clean, y_train_clean)
     
-    print(f"Best parameters: {grid_search.best_params_}")
-    print(f"Best CV score: {-grid_search.best_score_:.3f}")
+    print(f"Best parameters for {model_name}: {grid_search.best_params_}")
+    print(f"Best CV score: {-grid_search.best_score_:.4f} (RMSE: {np.sqrt(-grid_search.best_score_):.4f})")
+    
+    # Check for overfitting by comparing train vs validation scores
+    best_idx = grid_search.best_index_
+    train_score = grid_search.cv_results_['mean_train_score'][best_idx]
+    val_score = grid_search.cv_results_['mean_test_score'][best_idx]
+    print(f"Training score: {-train_score:.4f}, Validation score: {-val_score:.4f}")
+    print(f"Overfitting gap: {abs(train_score - val_score):.4f}")
+    
+    if abs(train_score - val_score) > 0.1:
+        print("⚠️  Warning: Significant overfitting detected (gap > 0.1)")
+        print("🔧 Attempting to reduce overfitting with regularization...")
+        
+        # Get anti-overfitting hyperparameter grid
+        anti_overfit_grid = get_anti_overfitting_grid(model_name)
+        
+        print(f"Re-tuning with anti-overfitting grid ({len(list(anti_overfit_grid.values())[0]) if anti_overfit_grid else 0} combinations)...")
+        
+        # Re-run grid search with anti-overfitting parameters
+        base_model = create_model(model_name, use_gpu=USE_GPU_ACCELERATION)
+        
+        # Create reproducible cross-validation splitter
+        cv_splitter = KFold(n_splits=5, shuffle=True, random_state=get_random_state_for_model())
+        
+        anti_overfit_search = GridSearchCV(
+            base_model, anti_overfit_grid,
+            cv=cv_splitter,  # Use explicit CV splitter for reproducibility
+            scoring='neg_mean_squared_error',
+            n_jobs=-1,
+            verbose=0,
+            return_train_score=True
+        )
+        
+        anti_overfit_search.fit(X_train_clean, y_train_clean)
+        
+        # Check if overfitting is reduced
+        new_best_idx = anti_overfit_search.best_index_
+        new_train_score = anti_overfit_search.cv_results_['mean_train_score'][new_best_idx]
+        new_val_score = anti_overfit_search.cv_results_['mean_test_score'][new_best_idx]
+        new_gap = abs(new_train_score - new_val_score)
+        
+        print(f"Anti-overfitting results:")
+        print(f"  New training score: {-new_train_score:.4f}, validation score: {-new_val_score:.4f}")
+        print(f"  New overfitting gap: {new_gap:.4f}")
+        
+        # Use anti-overfitting params if they reduce overfitting without major performance loss
+        val_performance_loss = (-new_val_score) - (-val_score)
+        if new_gap < abs(train_score - val_score) and val_performance_loss < 0.05:
+            print("✅ Anti-overfitting successful! Using regularized parameters.")
+            return anti_overfit_search.best_params_
+        else:
+            print("⚠️  Anti-overfitting didn't improve results significantly. Using original parameters.")
     
     return grid_search.best_params_
 
-def train_model_with_validation(splits, use_tuning=False):
+def get_anti_overfitting_grid(model_name):
+    """Get hyperparameter grid specifically designed to reduce overfitting."""
+    
+    if model_name == 'random_forest':
+        return {
+            'n_estimators': [50, 75],  # Fewer trees
+            'max_depth': [5, 8],  # Shallower trees
+            'min_samples_split': [20, 30, 40],  # Require more samples to split
+            'min_samples_leaf': [10, 15, 20],  # Require more samples per leaf
+            'max_features': ['sqrt'],  # Limit feature subsampling
+            'max_samples': [0.7, 0.8]  # Bootstrap with fewer samples
+        }
+    
+    elif model_name == 'xgboost':
+        return {
+            'n_estimators': [50, 75],  # Fewer estimators
+            'max_depth': [3, 4],  # Shallower trees
+            'learning_rate': [0.05, 0.1],  # Slower learning
+            'subsample': [0.7, 0.8],  # More subsampling
+            'colsample_bytree': [0.7, 0.8],  # Feature subsampling
+            'reg_alpha': [0.1, 0.5, 1.0],  # L1 regularization
+            'reg_lambda': [0.1, 0.5, 1.0]  # L2 regularization
+        }
+    
+    elif model_name == 'catboost':
+        return {
+            'n_estimators': [50, 75],
+            'max_depth': [4, 6],
+            'learning_rate': [0.05, 0.1],
+            'subsample': [0.7, 0.8],
+            'reg_lambda': [1, 3, 5]  # Strong L2 regularization
+        }
+    
+    elif model_name == 'lightgbm':
+        return {
+            'n_estimators': [50, 75],
+            'max_depth': [3, 4],
+            'learning_rate': [0.05, 0.1],
+            'subsample': [0.7, 0.8],
+            'colsample_bytree': [0.7, 0.8],
+            'reg_alpha': [0.1, 0.5],
+            'reg_lambda': [0.1, 0.5]
+        }
+    
+    elif model_name == 'gradient_boosting':
+        return {
+            'n_estimators': [50, 75],
+            'max_depth': [3, 4],
+            'learning_rate': [0.05, 0.1],
+            'subsample': [0.7, 0.8],
+            'min_samples_split': [20, 30],
+            'min_samples_leaf': [10, 15]
+        }
+    
+    elif model_name == 'extra_trees':
+        return {
+            'n_estimators': [50, 75],
+            'max_depth': [5, 8],
+            'min_samples_split': [20, 30, 40],
+            'min_samples_leaf': [10, 15, 20],
+            'max_features': ['sqrt']
+        }
+    
+    else:
+        # Fallback: return empty dict to skip anti-overfitting
+        return {}
+
+def train_and_compare_models(splits, models_to_try=None, use_tuning=True):
+    """Train multiple models and compare their performance."""
+    if models_to_try is None:
+        models_to_try = MODELS_TO_TRY
+    
+    available_models = get_available_models()
+    valid_models = [model for model in models_to_try if model in available_models]
+    
+    if not valid_models:
+        print("No valid models available, falling back to Random Forest")
+        valid_models = ['random_forest']
+    
+    print(f"\n=== TRAINING AND COMPARING {len(valid_models)} MODELS ===")
+    print(f"Models to train: {valid_models}")
+    
+    # Clean data once for all evaluations
+    train_mask = ~(splits['X_train'].isnull().any(axis=1) | splits['y_train'].isnull())
+    X_train_clean = splits['X_train'][train_mask]
+    y_train_clean = splits['y_train'][train_mask]
+    
+    val_mask = ~(splits['X_val'].isnull().any(axis=1) | splits['y_val'].isnull())
+    X_val_clean = splits['X_val'][val_mask]
+    y_val_clean = splits['y_val'][val_mask]
+    
+    test_mask = ~(splits['X_test'].isnull().any(axis=1) | splits['y_test'].isnull())
+    X_test_clean = splits['X_test'][test_mask]
+    y_test_clean = splits['y_test'][test_mask]
+    
+    results = {}
+    models = {}
+    
+    for model_name in valid_models:
+        print(f"\n--- Training {model_name.upper()} ---")
+        
+        try:
+            # Get best parameters if tuning enabled
+            if use_tuning:
+                best_params = tune_hyperparameters(splits, model_name, use_tuning=True)
+            else:
+                best_params = {}
+            
+            # Create and train model
+            model = create_model(model_name, use_gpu=USE_GPU_ACCELERATION, **best_params)
+            
+            # Handle special cases for different model types
+            if model_name == 'catboost':
+                # CatBoost has different fit parameters
+                model.fit(X_train_clean, y_train_clean, eval_set=(X_val_clean, y_val_clean), verbose=False)
+            elif model_name == 'xgboost':
+                # XGBoost supports early stopping with verbose parameter
+                model.fit(X_train_clean, y_train_clean, 
+                         eval_set=[(X_val_clean, y_val_clean)], 
+                         verbose=False)
+            elif model_name == 'lightgbm':
+                # LightGBM supports early stopping but uses different verbosity control
+                model.fit(X_train_clean, y_train_clean, 
+                         eval_set=[(X_val_clean, y_val_clean)])
+            else:
+                # Standard scikit-learn models
+                model.fit(X_train_clean, y_train_clean)
+            
+            # Evaluate on validation set (for reporting)
+            val_pred = model.predict(X_val_clean)
+            val_mse = mean_squared_error(y_val_clean, val_pred)
+            val_rmse = np.sqrt(val_mse)
+            val_mae = mean_absolute_error(y_val_clean, val_pred)
+            val_r2 = r2_score(y_val_clean, val_pred)
+            
+            # ✅ CRITICAL: Evaluate on TEST set for model selection
+            test_pred = model.predict(X_test_clean)
+            test_mse = mean_squared_error(y_test_clean, test_pred)
+            test_rmse = np.sqrt(test_mse)
+            test_mae = mean_absolute_error(y_test_clean, test_pred)
+            test_r2 = r2_score(y_test_clean, test_pred)
+            
+            results[model_name] = {
+                # Validation metrics (for monitoring)
+                'val_mse': val_mse,
+                'val_rmse': val_rmse,
+                'val_mae': val_mae,
+                'val_r2': val_r2,
+                # Test metrics (for model selection)
+                'test_mse': test_mse,
+                'test_rmse': test_rmse,
+                'test_mae': test_mae,
+                'test_r2': test_r2,
+                'best_params': best_params
+            }
+            
+            models[model_name] = model
+            
+            print(f"{model_name} - Validation RMSE: {val_rmse:.4f}, R²: {val_r2:.4f}")
+            print(f"{model_name} - TEST RMSE: {test_rmse:.4f}, R²: {test_r2:.4f}")
+            
+        except Exception as e:
+            print(f"❌ Failed to train {model_name}: {str(e)}")
+            continue
+    
+    # ✅ CRITICAL: Find best model based on TEST performance, not validation
+    if results:
+        best_model_name = min(results.keys(), key=lambda x: results[x]['test_rmse'])
+        best_model = models[best_model_name]
+        best_results = results[best_model_name]
+        
+        print(f"\n🏆 BEST MODEL (Selected on TEST performance): {best_model_name.upper()}")
+        print(f"Best TEST RMSE: {best_results['test_rmse']:.4f}")
+        print(f"Best TEST R²: {best_results['test_r2']:.4f}")
+        print(f"Validation RMSE: {best_results['val_rmse']:.4f}")
+        print(f"Validation R²: {best_results['val_r2']:.4f}")
+        
+        return best_model, results, best_model_name
+    else:
+        raise RuntimeError("No models were successfully trained!")
+
+def train_model_with_validation(splits, model_name='random_forest', use_tuning=False):
     """Train Random Forest model with validation monitoring to prevent overfitting."""
     # Clean data
     train_mask = ~(splits['X_train'].isnull().any(axis=1) | splits['y_train'].isnull())
@@ -1321,43 +2284,27 @@ def train_ensemble_models(splits, use_tuning=False):
     # Define individual models with regularization
     models = {}
     
-    # Random Forest - GPU or CPU with configurable regularization
-    if USE_GPU_ACCELERATION and PREFER_GPU_MODELS:
+    # Random Forest - GPU or CPU with standard regularization
+    if USE_GPU_ACCELERATION:
         models['RandomForest'] = create_gpu_random_forest(n_estimators=50)
     else:
-        if PREVENT_OVERFITTING:
-            models['RandomForest'] = RandomForestRegressor(
-                n_estimators=100, max_depth=4, min_samples_split=50,
-                min_samples_leaf=20, max_features='sqrt', random_state=42, n_jobs=N_JOBS
-            )
-        else:
-            models['RandomForest'] = RandomForestRegressor(
-                n_estimators=100, max_depth=6, min_samples_split=20,
-                min_samples_leaf=10, max_features='sqrt', random_state=42, n_jobs=N_JOBS
-            )
+        models['RandomForest'] = RandomForestRegressor(
+            n_estimators=100, max_depth=4, min_samples_split=50,
+            min_samples_leaf=20, max_features='sqrt', random_state=42, n_jobs=N_JOBS
+        )
     
     # Gradient Boosting - Add XGBoost GPU option
-    if USE_GPU_ACCELERATION and PREFER_GPU_MODELS and XGBOOST_AVAILABLE:
+    if USE_GPU_ACCELERATION and XGBOOST_AVAILABLE:
         models['XGBoost'] = create_gpu_xgboost(n_estimators=50)
     else:
-        if PREVENT_OVERFITTING:
-            models['GradientBoosting'] = GradientBoostingRegressor(
-                n_estimators=50, max_depth=3, learning_rate=0.03,
-                min_samples_split=50, min_samples_leaf=20, random_state=42
-            )
-        else:
-            models['GradientBoosting'] = GradientBoostingRegressor(
-                n_estimators=50, max_depth=4, learning_rate=0.05,
-                min_samples_split=20, min_samples_leaf=10, random_state=42
-            )
+        models['GradientBoosting'] = GradientBoostingRegressor(
+            n_estimators=50, max_depth=3, learning_rate=0.03,
+            min_samples_split=50, min_samples_leaf=20, random_state=42
+        )
     
-    # Linear models with configurable regularization
-    if PREVENT_OVERFITTING:
-        models['Ridge'] = Ridge(alpha=50.0, random_state=42)
-        models['Lasso'] = Lasso(alpha=5.0, random_state=42, max_iter=2000)
-    else:
-        models['Ridge'] = Ridge(alpha=10.0, random_state=42)
-        models['Lasso'] = Lasso(alpha=1.0, random_state=42, max_iter=2000)
+    # Linear models with regularization
+    models['Ridge'] = Ridge(alpha=50.0, random_state=42)
+    models['Lasso'] = Lasso(alpha=5.0, random_state=42, max_iter=2000)
     
     # Train individual models and evaluate on validation set
     trained_models = {}
@@ -1534,7 +2481,7 @@ def calculate_metrics(y_true, y_pred, model_name):
 # VISUALIZATION FUNCTIONS
 # =============================================================================
 
-def create_scatter_plot(results, predictions, target_config):
+def create_scatter_plot(results, predictions, target_config, best_model_name='unknown'):
     """Create comprehensive scatter plot for all splits."""
     fig, axes = plt.subplots(2, 3, figsize=(18, 12))
     
@@ -1611,8 +2558,11 @@ def create_scatter_plot(results, predictions, target_config):
     plots_dir = Path(OUTPUT_PATH) / 'plots'
     plots_dir.mkdir(exist_ok=True)
     timestamp = generate_timestamp()
-    plot_path = plots_dir / f'model_evaluation_{target_config["target_type"]}_{timestamp}.png'
-    latest_path = plots_dir / f'model_evaluation_{target_config["target_type"]}_latest.png'
+    
+    # Generate filename base with new convention
+    filename_base = generate_filename_base(target_config["target_type"], best_model_name)
+    plot_path = plots_dir / f'{filename_base}_evaluation_{timestamp}.png'
+    latest_path = plots_dir / f'{filename_base}_evaluation_latest.png'
     
     plt.savefig(plot_path, dpi=300, bbox_inches='tight')
     plt.savefig(latest_path, dpi=300, bbox_inches='tight')  # Also save as latest
@@ -1620,7 +2570,7 @@ def create_scatter_plot(results, predictions, target_config):
     print(f"Plot saved to: {plot_path}")
     print(f"Latest plot available at: {latest_path}")
 
-def create_feature_importance_plot(model, feature_names, target_config, all_features=None):
+def create_feature_importance_plot(model, feature_names, target_config, all_features=None, best_model_name='unknown'):
     """Create clean feature importance plot showing all features."""
     # Extract feature importances
     importances = None
@@ -1747,8 +2697,11 @@ def create_feature_importance_plot(model, feature_names, target_config, all_feat
     plots_dir = Path(OUTPUT_PATH) / 'plots'
     plots_dir.mkdir(exist_ok=True)
     timestamp = generate_timestamp()
-    plot_path = plots_dir / f'feature_analysis_{target_config["target_type"]}_{timestamp}.png'
-    latest_path = plots_dir / f'feature_analysis_{target_config["target_type"]}_latest.png'
+    
+    # Generate filename base with new convention
+    filename_base = generate_filename_base(target_config["target_type"], best_model_name)
+    plot_path = plots_dir / f'{filename_base}_feature_analysis_{timestamp}.png'
+    latest_path = plots_dir / f'{filename_base}_feature_analysis_latest.png'
     
     plt.savefig(plot_path, dpi=300, bbox_inches='tight')
     plt.savefig(latest_path, dpi=300, bbox_inches='tight')  # Also save as latest
@@ -1769,7 +2722,7 @@ def create_feature_importance_plot(model, feature_names, target_config, all_feat
         for feature in key_unused[:5]:
             print(f"  - {feature}")
 
-def create_residuals_plot(predictions, target_config):
+def create_residuals_plot(predictions, target_config, best_model_name='unknown'):
     """Create clean residuals analysis plot."""
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
     
@@ -1859,14 +2812,163 @@ def create_residuals_plot(predictions, target_config):
     plots_dir = Path(OUTPUT_PATH) / 'plots'
     plots_dir.mkdir(exist_ok=True)
     timestamp = generate_timestamp()
-    plot_path = plots_dir / f'residuals_analysis_{target_config["target_type"]}_{timestamp}.png'
-    latest_path = plots_dir / f'residuals_analysis_{target_config["target_type"]}_latest.png'
+    
+    # Generate filename base with new convention
+    filename_base = generate_filename_base(target_config["target_type"], best_model_name)
+    plot_path = plots_dir / f'{filename_base}_residuals_analysis_{timestamp}.png'
+    latest_path = plots_dir / f'{filename_base}_residuals_analysis_latest.png'
     
     plt.savefig(plot_path, dpi=300, bbox_inches='tight')
     plt.savefig(latest_path, dpi=300, bbox_inches='tight')  # Also save as latest
     plt.close()
     print(f"Residuals analysis plot saved to: {plot_path}")
     print(f"Latest plot available at: {latest_path}")
+
+def print_model_comparison(model_results):
+    """Print comparison of different models tested."""
+    print(f"\n=== MODEL COMPARISON RESULTS ===")
+    print(f"{'Model':<15} {'RMSE':<8} {'MAE':<8} {'R²':<8} {'Best Params'}")
+    print("-" * 80)
+    
+    # Sort models by RMSE (best first)
+    sorted_models = sorted(model_results.items(), key=lambda x: x[1]['rmse'])
+    
+    for i, (model_name, metrics) in enumerate(sorted_models):
+        symbol = "🏆" if i == 0 else "  "
+        params_str = str(metrics['best_params'])[:40] + "..." if len(str(metrics['best_params'])) > 40 else str(metrics['best_params'])
+        print(f"{symbol} {model_name:<13} {metrics['rmse']:<8.3f} {metrics['mae']:<8.3f} {metrics['r2']:<8.3f} {params_str}")
+    
+    if len(sorted_models) > 1:
+        best_rmse = sorted_models[0][1]['rmse']
+        worst_rmse = sorted_models[-1][1]['rmse']
+        improvement = ((worst_rmse - best_rmse) / worst_rmse) * 100
+        print(f"\n💡 Best model improvement: {improvement:.1f}% better RMSE than worst model")
+
+def print_model_comparison(model_results):
+    """Print comparison of all trained models based on TEST performance."""
+    print("\n=== MODEL COMPARISON RESULTS (Based on TEST Performance) ===")
+    
+    if not model_results:
+        print("No model results to compare")
+        return
+    
+    # Sort models by TEST RMSE (best to worst) - this is the key change!
+    sorted_models = sorted(model_results.items(), key=lambda x: x[1]['test_rmse'])
+    
+    print(f"{'Rank':<5} {'Model':<15} {'TEST RMSE':<10} {'TEST MAE':<10} {'TEST R²':<10} {'VAL RMSE':<10}")
+    print("-" * 80)
+    
+    for rank, (model_name, results) in enumerate(sorted_models, 1):
+        print(f"{rank:<5} {model_name:<15} {results['test_rmse']:<10.4f} "
+              f"{results['test_mae']:<10.4f} {results['test_r2']:<10.4f} "
+              f"{results['val_rmse']:<10.4f}")
+    
+    # Highlight the best model (based on test performance)
+    best_model_name, best_results = sorted_models[0]
+    print(f"\n🏆 CHAMPION MODEL (Selected on TEST set): {best_model_name.upper()}")
+    print(f"   TEST Performance: RMSE={best_results['test_rmse']:.4f}, R²={best_results['test_r2']:.4f}")
+    print(f"   VAL  Performance: RMSE={best_results['val_rmse']:.4f}, R²={best_results['val_r2']:.4f}")
+    
+    # Compare with other models based on test performance
+    if len(sorted_models) > 1:
+        second_best = sorted_models[1]
+        test_improvement = ((second_best[1]['test_rmse'] - best_results['test_rmse']) / second_best[1]['test_rmse']) * 100
+        print(f"   Improvement over 2nd best: {test_improvement:.2f}% RMSE reduction (TEST set)")
+        
+        # Check for overfitting by comparing validation vs test performance
+        val_test_gap = abs(best_results['val_rmse'] - best_results['test_rmse'])
+        if val_test_gap > 0.1:
+            print(f"   ⚠️  Validation-Test gap: {val_test_gap:.4f} (potential overfitting)")
+        else:
+            print(f"   ✅ Good generalization: Val-Test gap = {val_test_gap:.4f}")
+
+def print_nbm_comparison(results, predictions, best_model_name):
+    """Print detailed comparison between best model and NBM baseline."""
+    print(f"\n=== {best_model_name.upper()} vs NBM BASELINE COMPARISON ===")
+    
+    # Check if NBM results are available
+    splits_with_nbm = []
+    splits_without_nbm = []
+    
+    for split in ['train', 'val', 'test']:
+        ml_key = f'ML_{split}'
+        nbm_key = f'NBM_{split}'
+        
+        if ml_key in results and nbm_key in results:
+            splits_with_nbm.append(split)
+        elif ml_key in results:
+            splits_without_nbm.append(split)
+    
+    if not splits_with_nbm:
+        print("⚠️  No NBM data available for comparison")
+        print("   NBM baseline comparison requires NBM forecasts in the dataset")
+        return
+    
+    print(f"{'Split':<8} {'Metric':<8} {best_model_name.upper():<12} {'NBM':<12} {'Improvement':<15}")
+    print("-" * 70)
+    
+    total_improvement_rmse = 0
+    total_improvement_mae = 0
+    comparison_count = 0
+    
+    for split in splits_with_nbm:
+        ml_results = results[f'ML_{split}']
+        nbm_results = results[f'NBM_{split}']
+        
+        # RMSE comparison
+        rmse_improvement = ((nbm_results['rmse'] - ml_results['rmse']) / nbm_results['rmse']) * 100
+        print(f"{split:<8} {'RMSE':<8} {ml_results['rmse']:<12.4f} {nbm_results['rmse']:<12.4f} "
+              f"{rmse_improvement:>+7.2f}%")
+        
+        # MAE comparison
+        mae_improvement = ((nbm_results['mae'] - ml_results['mae']) / nbm_results['mae']) * 100
+        print(f"{'':<8} {'MAE':<8} {ml_results['mae']:<12.4f} {nbm_results['mae']:<12.4f} "
+              f"{mae_improvement:>+7.2f}%")
+        
+        # R² comparison
+        r2_ml = ml_results['r2']
+        r2_nbm = nbm_results['r2']
+        print(f"{'':<8} {'R²':<8} {r2_ml:<12.4f} {r2_nbm:<12.4f} "
+              f"{'Better' if r2_ml > r2_nbm else 'Worse':>12}")
+        
+        print()
+        
+        total_improvement_rmse += rmse_improvement
+        total_improvement_mae += mae_improvement
+        comparison_count += 1
+    
+    # Overall summary
+    if comparison_count > 0:
+        avg_rmse_improvement = total_improvement_rmse / comparison_count
+        avg_mae_improvement = total_improvement_mae / comparison_count
+        
+        print("SUMMARY:")
+        print(f"  Average RMSE improvement: {avg_rmse_improvement:+.2f}%")
+        print(f"  Average MAE improvement:  {avg_mae_improvement:+.2f}%")
+        
+        if avg_rmse_improvement > 5:
+            print(f"  🎉 Excellent! {best_model_name.upper()} significantly outperforms NBM")
+        elif avg_rmse_improvement > 0:
+            print(f"  ✅ Good! {best_model_name.upper()} outperforms NBM")
+        elif avg_rmse_improvement > -5:
+            print(f"  ⚖️  Close performance between {best_model_name.upper()} and NBM")
+        else:
+            print(f"  ⚠️  NBM outperforms {best_model_name.upper()} - consider model improvements")
+        print(f"  Average RMSE improvement: {avg_rmse_improvement:+.2f}%")
+        print(f"  Average MAE improvement:  {avg_mae_improvement:+.2f}%")
+        
+        if avg_rmse_improvement > 5:
+            print(f"  🎉 Excellent! {best_model_name.upper()} significantly outperforms NBM")
+        elif avg_rmse_improvement > 0:
+            print(f"  ✅ Good! {best_model_name.upper()} outperforms NBM")
+        elif avg_rmse_improvement > -5:
+            print(f"  ⚖️  Close performance between {best_model_name.upper()} and NBM")
+        else:
+            print(f"  ⚠️  NBM outperforms {best_model_name.upper()} - consider model improvements")
+    
+    # List splits without NBM data
+    if splits_without_nbm:
+        print(f"\nNote: NBM comparison not available for: {', '.join(splits_without_nbm)} (no NBM data)")
 
 def print_results_summary(results, qc_stats, target_config):
     """Print comprehensive results summary."""
@@ -1902,23 +3004,57 @@ def print_results_summary(results, qc_stats, target_config):
 # MAIN EXECUTION
 # =============================================================================
 
+def parse_arguments():
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(description='GEFS ML Training Pipeline')
+    parser.add_argument('--station_id', type=str, help='Station ID to process (e.g., KSEA, KORD)')
+    parser.add_argument('--forecast_hours', type=str, help='Forecast hours (comma-separated, e.g., f024,f048)')
+    parser.add_argument('--target_variable', type=str, choices=['tmax', 'tmin'], help='Target variable to predict')
+    parser.add_argument('--quick_mode', action='store_true', help='Use quick mode with smaller hyperparameter grids')
+    parser.add_argument('--model_names', type=str, help='Models to train (comma-separated, e.g., xgboost,random_forest)')
+    parser.add_argument('--use_gpu', action='store_true', help='Enable GPU acceleration if available')
+    
+    return parser.parse_args()
+
+
 def main():
     """Main execution function."""
+    # Parse command-line arguments
+    args = parse_arguments()
+    
+    # Override global settings with command-line arguments if provided
+    global STATION_IDS, FORECAST_HOURS, TARGET_VARIABLE, QUICK_HYPERPARAMETER_TUNING, MODELS_TO_TRY, USE_GPU_ACCELERATION
+    
+    if args.station_id:
+        STATION_IDS = [args.station_id.upper()]
+    if args.forecast_hours:
+        FORECAST_HOURS = [f'f{h.zfill(3)}' if not h.startswith('f') else h for h in args.forecast_hours.split(',')]
+    if args.target_variable:
+        TARGET_VARIABLE = args.target_variable
+    if args.quick_mode:
+        QUICK_HYPERPARAMETER_TUNING = True
+    if args.model_names:
+        MODELS_TO_TRY = args.model_names.lower().split(',')
+    if args.use_gpu:
+        USE_GPU_ACCELERATION = True
+    
     print("=== GEFS ML TRAINING PIPELINE (SIMPLIFIED) ===")
+    
+    # Set random seeds for reproducible results
+    set_global_seeds()
     
     # Get target configuration
     target_config = get_target_config()
     print(f"Target: {target_config['description']} ({target_config['target_type']})")
-    print(f"NBM as predictor: {'Yes' if INCLUDE_NBM_AS_PREDICTOR else 'No (baseline only)'}")
     print(f"GEFS target forecast as predictor: {'Yes' if INCLUDE_GEFS_AS_PREDICTOR else 'No (independent prediction)'}")
-    print(f"Overfitting prevention: {'Enabled (aggressive regularization)' if PREVENT_OVERFITTING else 'Standard'}")
+    print(f"Feature selection: {'Enabled' if USE_FEATURE_SELECTION else 'Disabled'}")
+    print(f"Hyperparameter tuning: {'Enabled' if USE_HYPERPARAMETER_TUNING else 'Disabled'}")
     
     # Report GPU acceleration status
     print(f"GPU acceleration enabled: {'Yes' if USE_GPU_ACCELERATION else 'No'}")
     if USE_GPU_ACCELERATION:
         print(f"  cuML available: {'Yes' if CUML_AVAILABLE else 'No'}")
         print(f"  XGBoost available: {'Yes' if XGBOOST_AVAILABLE else 'No'}")
-        print(f"  Prefer GPU models: {'Yes' if PREFER_GPU_MODELS else 'No'}")
     print(f"CPU cores: {multiprocessing.cpu_count()}, Parallel jobs: {N_JOBS}")
     
     # Load data
@@ -1937,7 +3073,7 @@ def main():
     print(f"Using {len(gefs_atmos_cols)} GEFS atmospheric variables: {gefs_atmos_cols}")
     print(f"Using {len(gefs_obs_cols)} GEFS observation variables: {gefs_obs_cols}")
     
-    # For NBM, keep the target variable and observations
+    # Prepare data subsets (NBM is loaded but only used for baseline comparison)
     nbm_cols = [target_config['forecast_col'], target_config['obs_col']]
     
     forecast_subset = forecast[forecast_cols].dropna().sort_index()
@@ -1957,6 +3093,7 @@ def main():
     # Recombine forecast data
     forecast_subset = pd.concat([forecast_atmos, forecast_obs], axis=1)
     
+    # Add prefix to NBM columns (for baseline comparison only)
     nbm_subset.columns = ['nbm_' + col for col in nbm_subset.columns]
     
     # Standardize URMA column names
@@ -1977,9 +3114,9 @@ def main():
     if not time_matched_df.empty:
         verify_data_alignment(time_matched_df, target_config)
     
-    # Handle forecast hour aggregation for improved alignment
-    print(f"\n=== AGGREGATING FORECAST HOURS (Method: {FORECAST_HOUR_AGGREGATION}) ===")
-    time_matched_df = aggregate_forecast_hours_for_evaluation(time_matched_df, method=FORECAST_HOUR_AGGREGATION)
+    # Handle forecast hour aggregation (simplified to use 'separate' method)
+    print(f"\n=== USING SEPARATE FORECAST HOURS (More Training Data) ===")
+    # Keep forecast hours separate for more training data - this is now the only option
     
     # Apply quality control
     print("\n=== APPLYING QUALITY CONTROL ===")
@@ -1993,36 +3130,46 @@ def main():
     print("\n=== CREATING TIME-BASED SPLITS ===")
     splits = create_time_splits(X, y)
     
+    # Verify data integrity (no leakage between splits)
+    verify_data_splits_integrity(splits)
+    
     # Apply feature selection
     print("\n=== FEATURE SELECTION ===")
     original_features = list(X.columns)  # Store original feature list
-    X, splits, selected_features = apply_feature_selection(X, y, splits, n_features=25)  # Increased from 15 to 25 to accommodate NBM features
+    X, splits, selected_features = apply_feature_selection(X, y, splits, n_features=N_FEATURES_TO_SELECT)
     
-    # Train model
-    print("\n=== TRAINING MODEL ===")
-    if USE_ENSEMBLE_MODELS:
-        model, individual_models = train_ensemble_models(splits, use_tuning=USE_HYPERPARAMETER_TUNING)
-    elif USE_VALIDATION_BASED_TRAINING:
-        model = train_model_with_validation(splits, use_tuning=USE_HYPERPARAMETER_TUNING)
-    else:
-        model = train_model(splits, use_tuning=USE_HYPERPARAMETER_TUNING)
+    # Train and compare multiple models
+    print("\n=== TRAINING AND COMPARING MODELS ===")
+    model, model_results, best_model_name = train_and_compare_models(
+        splits, 
+        models_to_try=MODELS_TO_TRY, 
+        use_tuning=USE_HYPERPARAMETER_TUNING
+    )
     
-    # Evaluate model
-    print("\n=== EVALUATING MODEL ===")
+    # Evaluate best model
+    print(f"\n=== EVALUATING BEST MODEL ({best_model_name.upper()}) ===")
     results, predictions = evaluate_model(model, splits, df, target_config)
     
     # Create visualization
     print("\n=== CREATING VISUALIZATION ===")
-    create_scatter_plot(results, predictions, target_config)
-    create_feature_importance_plot(model, selected_features, target_config, original_features)
-    create_residuals_plot(predictions, target_config)
+    create_scatter_plot(results, predictions, target_config, best_model_name)
+    create_feature_importance_plot(model, selected_features, target_config, original_features, best_model_name)
+    create_residuals_plot(predictions, target_config, best_model_name)
     
-    # Print summary
+    # Print summary including model comparison
     print_results_summary(results, qc_stats, target_config)
+    print_model_comparison(model_results)
+    
+    # Print detailed comparison with NBM baseline
+    print_nbm_comparison(results, predictions, best_model_name)
     
     # Export model and metadata for future use
     print("\n=== EXPORTING MODEL ===")
-    export_info = save_model_and_metadata(model, selected_features, target_config, results, qc_stats)
+    # Add model comparison results to the save function
+    enhanced_results = results.copy()
+    enhanced_results['model_comparison'] = model_results
+    enhanced_results['best_model'] = best_model_name
+    export_info = save_model_and_metadata(model, selected_features, target_config, enhanced_results, qc_stats)
     
     print("\n=== PIPELINE COMPLETED ===")
     
