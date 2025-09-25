@@ -37,6 +37,8 @@ from datetime import timedelta, datetime
 import json
 import joblib
 import os
+import sys
+import argparse
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor, VotingRegressor, ExtraTreesRegressor
 from sklearn.linear_model import Ridge, Lasso, LinearRegression
 from sklearn.svm import SVR
@@ -132,12 +134,12 @@ MODELS_TO_TRY = [
     # 'ridge',            # Ridge regression (L2 regularization)
     # 'lasso',            # Lasso regression (L1 regularization)
     # 'stepwise',         # Stepwise regression (feature selection + OLS)
-    'random_forest',    # Random Forest (always available)
+    # 'random_forest',    # Random Forest (always available)
     'gradient_boosting', # Scikit-learn Gradient Boosting (always available)
     'xgboost',          # XGBoost (if available) 
     # 'catboost',         # CatBoost (if available)
     'lightgbm',         # LightGBM (if available)
-    'extra_trees'       # Extra Trees (always available)
+    # 'extra_trees'       # Extra Trees (always available)
 ]
 
 # Hardware Configuration
@@ -402,22 +404,16 @@ def save_model_and_metadata(model, selected_features, target_config, results, qc
     model_path = Path(OUTPUT_PATH) / model_dir
     model_path.mkdir(exist_ok=True)
     
-    # Create timestamp for unique naming
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    target_type = target_config['target_type']
-    
     # Extract best model name from results
     best_model_name = results.get('best_model', 'unknown')
+    target_type = target_config['target_type']
     
-    # Generate filename base with new convention
+    # Generate filename base with new convention - save directly as latest
     filename_base = generate_filename_base(target_type, best_model_name)
     
-    # Define file paths with new naming convention
-    model_filename = f"{filename_base}_{timestamp}.joblib"
-    metadata_filename = f"{filename_base}_{timestamp}.json"
-    
-    model_file_path = model_path / model_filename
-    metadata_file_path = model_path / metadata_filename
+    # Define file paths as latest versions only
+    model_file_path = model_path / f"{filename_base}_latest.joblib"
+    metadata_file_path = model_path / f"{filename_base}_latest.json"
     
     # Save the trained model
     joblib.dump(model, model_file_path)
@@ -429,7 +425,7 @@ def save_model_and_metadata(model, selected_features, target_config, results, qc
             'target_type': target_config['target_type'],
             'target_description': target_config['description'],
             'model_type': type(model).__name__,
-            'training_timestamp': timestamp,
+            'training_timestamp': datetime.now().strftime("%Y%m%d_%H%M%S"),
             'script_version': '1.0'
         },
         'training_config': {
@@ -498,25 +494,14 @@ def save_model_and_metadata(model, selected_features, target_config, results, qc
         json.dump(metadata, f, indent=2, default=str)
     
     print(f"Metadata saved to: {metadata_file_path}")
-    
-    # Create a latest symlink/copy for easy access with new naming convention
-    latest_filename_base = generate_filename_base(target_type, best_model_name)
-    latest_model_path = model_path / f"{latest_filename_base}_latest.joblib"
-    latest_metadata_path = model_path / f"{latest_filename_base}_latest.json"
-    
-    # Copy files to latest
-    import shutil
-    shutil.copy2(model_file_path, latest_model_path)
-    shutil.copy2(metadata_file_path, latest_metadata_path)
-    
-    print(f"Latest model available at: {latest_model_path}")
-    print(f"Latest metadata available at: {latest_metadata_path}")
+    print(f"Latest model available at: {model_file_path}")
+    print(f"Latest metadata available at: {metadata_file_path}")
     
     return {
         'model_file': str(model_file_path),
         'metadata_file': str(metadata_file_path),
-        'latest_model_file': str(latest_model_path),
-        'latest_metadata_file': str(latest_metadata_path)
+        'latest_model_file': str(model_file_path),
+        'latest_metadata_file': str(metadata_file_path)
     }
 
 def load_model_and_metadata(model_file_path=None, metadata_file_path=None, target_type='tmax'):
@@ -2554,21 +2539,18 @@ def create_scatter_plot(results, predictions, target_config, best_model_name='un
     
     plt.tight_layout()
     
-    # Save plot with timestamp
+    # Save plot as latest version only
     plots_dir = Path(OUTPUT_PATH) / 'plots'
     plots_dir.mkdir(exist_ok=True)
-    timestamp = generate_timestamp()
     
     # Generate filename base with new convention
     filename_base = generate_filename_base(target_config["target_type"], best_model_name)
-    plot_path = plots_dir / f'{filename_base}_evaluation_{timestamp}.png'
-    latest_path = plots_dir / f'{filename_base}_evaluation_latest.png'
+    plot_path = plots_dir / f'{filename_base}_evaluation_latest.png'
     
     plt.savefig(plot_path, dpi=300, bbox_inches='tight')
-    plt.savefig(latest_path, dpi=300, bbox_inches='tight')  # Also save as latest
     plt.close()  # Close the figure to free memory
     print(f"Plot saved to: {plot_path}")
-    print(f"Latest plot available at: {latest_path}")
+    print(f"Latest plot available at: {plot_path}")
 
 def create_feature_importance_plot(model, feature_names, target_config, all_features=None, best_model_name='unknown'):
     """Create clean feature importance plot showing all features."""
@@ -2693,21 +2675,18 @@ def create_feature_importance_plot(model, feature_names, target_config, all_feat
     
     plt.tight_layout()
     
-    # Save plot with timestamp
+    # Save plot as latest version only
     plots_dir = Path(OUTPUT_PATH) / 'plots'
     plots_dir.mkdir(exist_ok=True)
-    timestamp = generate_timestamp()
     
     # Generate filename base with new convention
     filename_base = generate_filename_base(target_config["target_type"], best_model_name)
-    plot_path = plots_dir / f'{filename_base}_feature_analysis_{timestamp}.png'
-    latest_path = plots_dir / f'{filename_base}_feature_analysis_latest.png'
+    plot_path = plots_dir / f'{filename_base}_feature_analysis_latest.png'
     
     plt.savefig(plot_path, dpi=300, bbox_inches='tight')
-    plt.savefig(latest_path, dpi=300, bbox_inches='tight')  # Also save as latest
     plt.close()
     print(f"Feature analysis plot saved to: {plot_path}")
-    print(f"Latest plot available at: {latest_path}")
+    print(f"Latest plot available at: {plot_path}")
     
     # Print feature summary
     print(f"\nFeature Importance Summary:")
@@ -2808,21 +2787,18 @@ def create_residuals_plot(predictions, target_config, best_model_name='unknown')
     
     ax4.grid(True, alpha=0.3)
     
-    # Save plot with timestamp
+    # Save plot as latest version only
     plots_dir = Path(OUTPUT_PATH) / 'plots'
     plots_dir.mkdir(exist_ok=True)
-    timestamp = generate_timestamp()
     
     # Generate filename base with new convention
     filename_base = generate_filename_base(target_config["target_type"], best_model_name)
-    plot_path = plots_dir / f'{filename_base}_residuals_analysis_{timestamp}.png'
-    latest_path = plots_dir / f'{filename_base}_residuals_analysis_latest.png'
+    plot_path = plots_dir / f'{filename_base}_residuals_analysis_latest.png'
     
     plt.savefig(plot_path, dpi=300, bbox_inches='tight')
-    plt.savefig(latest_path, dpi=300, bbox_inches='tight')  # Also save as latest
     plt.close()
     print(f"Residuals analysis plot saved to: {plot_path}")
-    print(f"Latest plot available at: {latest_path}")
+    print(f"Latest plot available at: {plot_path}")
 
 def print_model_comparison(model_results):
     """Print comparison of different models tested."""
@@ -3013,6 +2989,8 @@ def parse_arguments():
     parser.add_argument('--quick_mode', action='store_true', help='Use quick mode with smaller hyperparameter grids')
     parser.add_argument('--model_names', type=str, help='Models to train (comma-separated, e.g., xgboost,random_forest)')
     parser.add_argument('--use_gpu', action='store_true', help='Enable GPU acceleration if available')
+    
+    return parser.parse_args()
     
     return parser.parse_args()
 
