@@ -128,7 +128,7 @@ USE_FEATURE_SELECTION = True  # Apply feature selection to reduce overfitting
 INCLUDE_GEFS_AS_PREDICTOR = True  # Include GEFS forecast of target variable as predictor (True = less independent)
 N_FEATURES_TO_SELECT = 25  # Reduced number of features to prevent overfitting (was 25)
 
-# Model Selection - Focus on NBM residual correction instead of replacement
+# Model Selection
 MODELS_TO_TRY = [
     # 'ols',              # Ordinary Least Squares (Linear Regression)
     # 'ridge',            # Ridge regression (L2 regularization)
@@ -2043,6 +2043,9 @@ def train_and_compare_models(splits, models_to_try=None, use_tuning=True):
         valid_models = ['random_forest']
     
     print(f"\n=== TRAINING AND COMPARING {len(valid_models)} MODELS ===")
+    print(f"DEBUG: models_to_try = {models_to_try}")
+    print(f"DEBUG: available_models = {available_models}")
+    print(f"DEBUG: valid_models = {valid_models}")
     print(f"Models to train: {valid_models}")
     
     # Clean data once for all evaluations
@@ -2987,10 +2990,7 @@ def parse_arguments():
     parser.add_argument('--forecast_hours', type=str, help='Forecast hours (comma-separated, e.g., f024,f048)')
     parser.add_argument('--target_variable', type=str, choices=['tmax', 'tmin'], help='Target variable to predict')
     parser.add_argument('--quick_mode', action='store_true', help='Use quick mode with smaller hyperparameter grids')
-    parser.add_argument('--model_names', type=str, help='Models to train (comma-separated, e.g., xgboost,random_forest)')
     parser.add_argument('--use_gpu', action='store_true', help='Enable GPU acceleration if available')
-    
-    return parser.parse_args()
     
     return parser.parse_args()
 
@@ -3001,7 +3001,7 @@ def main():
     args = parse_arguments()
     
     # Override global settings with command-line arguments if provided
-    global STATION_IDS, FORECAST_HOURS, TARGET_VARIABLE, QUICK_HYPERPARAMETER_TUNING, MODELS_TO_TRY, USE_GPU_ACCELERATION
+    global STATION_IDS, FORECAST_HOURS, TARGET_VARIABLE, QUICK_HYPERPARAMETER_TUNING, USE_GPU_ACCELERATION
     
     if args.station_id:
         STATION_IDS = [args.station_id.upper()]
@@ -3011,8 +3011,6 @@ def main():
         TARGET_VARIABLE = args.target_variable
     if args.quick_mode:
         QUICK_HYPERPARAMETER_TUNING = True
-    if args.model_names:
-        MODELS_TO_TRY = args.model_names.lower().split(',')
     if args.use_gpu:
         USE_GPU_ACCELERATION = True
     

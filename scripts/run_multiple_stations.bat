@@ -19,7 +19,6 @@ REM Configuration
 set "TARGET_VARIABLE=tmax"
 set "USE_GPU=false"
 set "QUICK_MODE=false"
-set "MODELS=gradient_boosting,lightgbm,xgboost"
 
 REM Station limit for testing (set to 0 for unlimited)
 set /a MAX_STATIONS=0
@@ -148,7 +147,7 @@ for %%s in (%STATIONS%) do (
         echo Started at: %date% %time% >> "%LOG_FILE%"
         
         REM Build command using the reliable single station runner
-        set "CMD=call "%SCRIPT_DIR%run_single_station.bat" %%s %%f %TARGET_VARIABLE% %MODELS%"
+        set "CMD=call "%SCRIPT_DIR%run_single_station.bat" %%s %%f %TARGET_VARIABLE%"
         
         echo Command: !CMD!
         echo Command: !CMD! >> "%LOG_FILE%"

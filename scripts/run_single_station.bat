@@ -3,24 +3,19 @@ REM Simple batch script runner that avoids conda PowerShell issues
 REM Usage: run_single_station.bat STATION FORECAST_HOUR TARGET_VARIABLE
 
 if "%~1"=="" (
-    echo Usage: %0 ^<STATION^> ^<FORECAST_HOUR^> ^<TARGET_VARIABLE^> [MODELS]
+    echo Usage: %0 ^<STATION^> ^<FORECAST_HOUR^> ^<TARGET_VARIABLE^>
     echo Example: %0 KSEA f024 tmax
-    echo Example: %0 KSEA f024 tmax gradient_boosting,lightgbm
     exit /b 1
 )
 
 set STATION=%~1
 set FORECAST_HOUR=%~2
 set TARGET_VARIABLE=%~3
-set MODELS=%~4
-
-if "%MODELS%"=="" set MODELS=gradient_boosting,lightgbm,xgboost
 
 echo === Running ML Training for %STATION% %FORECAST_HOUR% ===
 echo Station: %STATION%
 echo Forecast Hour: %FORECAST_HOUR%
 echo Target Variable: %TARGET_VARIABLE%
-echo Models: %MODELS%
 echo.
 
 REM Set encoding for Unicode support
@@ -38,7 +33,7 @@ echo Environment activated successfully
 echo.
 
 REM Run the Python script
-python "%~dp0single_gefs_ml_trainer.py" --station_id %STATION% --forecast_hours %FORECAST_HOUR% --target_variable %TARGET_VARIABLE% --model_names %MODELS% --quick_mode
+python "%~dp0single_gefs_ml_trainer.py" --station_id %STATION% --forecast_hours %FORECAST_HOUR% --target_variable %TARGET_VARIABLE% --quick_mode
 
 if %errorlevel% equ 0 (
     echo.
