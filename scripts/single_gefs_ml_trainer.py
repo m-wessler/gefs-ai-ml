@@ -114,18 +114,18 @@ OUTPUT_PATH = "N:/projects/michael.wessler/gefs-ai-ml/"
 USE_ALL_AVAILABLE_STATIONS = False  # Set to True to use all available stations instead of STATION_IDS
 MAX_STATIONS = 500  # Maximum number of stations to use when USE_ALL_AVAILABLE_STATIONS is True
 RANDOM_STATION_SEED = 42  # Random seed for reproducible station selection
-STATION_IDS = ['KSEA']#, 'KBOI', 'KLAS', 'KSEA', 'KLAX']  # Multiple stations for better generalization
+STATION_IDS = ['KEKO']#, 'KBOI', 'KLAS', 'KSEA', 'KLAX']  # Multiple stations for better generalization
 
 # Data Configuration
 FORECAST_HOURS = ['f024']#, 'f048', 'f072']  # Multiple forecast hours for better generalization
 QC_THRESHOLD = 10  # Maximum allowed deviation between URMA and station obs in °C
-TARGET_VARIABLE = 'tmax'  # 'tmax' or 'tmin'
+TARGET_VARIABLE = 'tmin'  # 'tmax' or 'tmin'
 
 # Model Configuration - Essential Toggles Only
 USE_HYPERPARAMETER_TUNING = True  # Set to True for better performance but slower training
-QUICK_HYPERPARAMETER_TUNING = True  # Set to True for faster training with smaller grids (recommended for testing)
+QUICK_HYPERPARAMETER_TUNING = False  # Set to True for faster training with smaller grids (recommended for testing)
 USE_FEATURE_SELECTION = True  # Apply feature selection to reduce overfitting
-INCLUDE_GEFS_AS_PREDICTOR = True  # Include GEFS forecast of target variable as predictor (True = less independent)
+INCLUDE_GEFS_AS_PREDICTOR = False  # Include GEFS forecast of target variable as predictor (True = less independent)
 N_FEATURES_TO_SELECT = 25  # Reduced number of features to prevent overfitting (was 25)
 
 # Model Selection

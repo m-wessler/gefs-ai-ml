@@ -16,7 +16,7 @@ if not exist "%PYTHON_SCRIPT%" (
 )
 
 REM Configuration
-set "TARGET_VARIABLE=tmax"
+set "TARGET_VARIABLE=tmin"
 set "USE_GPU=false"
 set "QUICK_MODE=false"
 
